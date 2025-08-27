@@ -186,8 +186,10 @@ export function ContactProvider({ children }) {
           totalElements: response.data.length, 
           totalPages: 1 
         }});
+        return response.data;
       } catch (error) {
         dispatch({ type: 'SET_ERROR', payload: error.message });
+        throw error;
       }
     }, []),
 
