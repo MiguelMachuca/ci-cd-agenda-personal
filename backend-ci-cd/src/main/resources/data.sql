@@ -17,5 +17,5 @@ INSERT INTO contactos (id, nombre, apellido, telefono, email, direccion, fecha_n
 (5, 'Bomberos', '', '911', '', 'Estación Central', NULL, 'Emergencias', false, 5, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
 
 -- Resetear las secuencias de ID para que los próximos registros tengan IDs correctos
-ALTER TABLE categorias ALTER COLUMN id RESTART WITH 6;
-ALTER TABLE contactos ALTER COLUMN id RESTART WITH 6;
+-- Nota: Los resets de secuencia son específicos de H2. Bajo MySQL profile
+-- (application-mysql.properties) se deshabilita la ejecución automática de este script.

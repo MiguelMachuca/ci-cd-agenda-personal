@@ -1,20 +1,29 @@
 version: '3.8'
 
 services:
-  # Base de datos H2 (opcional, para desarrollo)
-  h2-database:
-    image: oscarfonts/h2
-    container_name: agenda-h2-db
-    ports:
-      - "9092:81"
+  # Base de datos MySQL
+  mysql:
+    image: mysql:8.0
+    container_name: agenda-mysql
+    command: ["mysqld", "--default-authentication-plugin=mysql_native_password", "--character-set-server=utf8mb4", "--collation-server=utf8mb4_unicode_ci"]
     environment:
-      H2_OPTIONS: "-ifNotExists"
+      MYSQL_DATABASE: agenda
+      MYSQL_USER: agenda
+      MYSQL_PASSWORD: agenda_pass
+      MYSQL_ROOT_PASSWORD: root_pass
+    ports:
+      - "3306:3306"
     volumes:
-      - h2-data:/h2-data
+      - mysql-data:/var/lib/mysql  # ← ESTE VOLUMEN DEBE ESTAR DEFINIDO ABAJO
     networks:
       - agenda-network
-    profiles:
-      - development
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-proot_pass"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
 
   # Backend Spring Boot
   backend:
@@ -25,19 +34,19 @@ services:
     ports:
       - "8080:8080"
     environment:
-      - SPRING_PROFILES_ACTIVE=docker
-      - SPRING_DATASOURCE_URL=jdbc:h2:file:./data/agenda
-      - SPRING_DATASOURCE_USERNAME=sa
-      - SPRING_DATASOURCE_PASSWORD=password
-      - SPRING_JPA_HIBERNATE_DDL_AUTO=create-drop
+      - SPRING_PROFILES_ACTIVE=mysql
+      - SPRING_DATASOURCE_URL=jdbc:mysql://mysql:3306/agenda?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
+      - SPRING_DATASOURCE_USERNAME=agenda
+      - SPRING_DATASOURCE_PASSWORD=agenda_pass
+      - SPRING_JPA_HIBERNATE_DDL_AUTO=update
       - SPRING_JPA_SHOW_SQL=false
-      - SPRING_H2_CONSOLE_ENABLED=true
     volumes:
       - backend-data:/app/data
     networks:
       - agenda-network
     depends_on:
-      - h2-database
+      mysql:
+        condition: service_healthy
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/api/contactos"]
@@ -88,6 +97,8 @@ services:
       - production
 
 volumes:
+  mysql-data:    # ← AGREGA ESTA LÍNEA
+    driver: local
   h2-data:
     driver: local
   backend-data:
