@@ -5,6 +5,7 @@ import ContactList from '../components/ContactList';
 import LoadingSpinner from '../components/LoadingSpinner';
 import ErrorMessage from '../components/ErrorMessage';
 import '../styles/Contact.css';
+import { Box, Typography, Paper, Stack, Button } from '@mui/material';
 
 function Favorites() {
   const navigate = useNavigate();
@@ -72,32 +73,23 @@ function Favorites() {
   }
 
   return (
-    <div className="favorites-page">
-      <div className="page-header">
-        <h1>⭐ Contactos Favoritos</h1>
-        <p>Tu lista de contactos más importantes</p>
-      </div>
+    <Box sx={{ px: 2, py: 2 }}>
+      <Typography variant="h5" fontWeight={700} sx={{ mb: 1 }}>⭐ Contactos Favoritos</Typography>
+      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>Tu lista de contactos más importantes</Typography>
 
       {favorites.length === 0 ? (
-        <div className="no-favorites">
-          <div className="no-favorites-icon">⭐</div>
-          <h3>No tienes contactos favoritos</h3>
-          <p>Marca algunos contactos como favoritos para verlos aquí</p>
-          <button 
-            className="btn btn-primary"
-            onClick={() => navigate('/contacts')}
-          >
-            Ver todos los contactos
-          </button>
-        </div>
+        <Paper variant="outlined" sx={{ p: 3, textAlign: 'center' }}>
+          <Typography variant="h6" sx={{ mb: 1 }}>No tienes contactos favoritos</Typography>
+          <Typography color="text.secondary" sx={{ mb: 2 }}>Marca algunos contactos como favoritos para verlos aquí</Typography>
+          <Button variant="contained" onClick={() => navigate('/contacts')}>Ver todos los contactos</Button>
+        </Paper>
       ) : (
         <>
-          <div className="favorites-stats">
-            <span className="favorites-count">
+          <Stack direction="row" sx={{ mb: 2 }}>
+            <Typography variant="subtitle2" color="text.secondary">
               {favorites.length} contacto{favorites.length !== 1 ? 's' : ''} favorito{favorites.length !== 1 ? 's' : ''}
-            </span>
-          </div>
-
+            </Typography>
+          </Stack>
           <ContactList
             contacts={favorites}
             onEdit={handleEdit}
@@ -107,7 +99,7 @@ function Favorites() {
           />
         </>
       )}
-    </div>
+    </Box>
   );
 }
 

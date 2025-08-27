@@ -2,6 +2,7 @@ import React from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { ContactProvider } from './context/ContactContext';
 import Navbar from './components/Navbar';
+import { Toolbar, Box } from '@mui/material';
 import Home from './pages/Home';
 import Contacts from './pages/Contacts';
 import AddContact from './pages/AddContact';
@@ -17,7 +18,8 @@ function App() {
       <Router>
         <div className="App">
           <Navbar />
-          <main className="main-content">
+          <Box component="main" sx={{ flexGrow: 1, p: 2 }}>
+            <Toolbar />
             <Routes>
               <Route path="/" element={<Home />} />
               <Route path="/contacts" element={<Contacts />} />
@@ -27,7 +29,7 @@ function App() {
               <Route path="/categories" element={<Categories />} />
               <Route path="/statistics" element={<Statistics />} />
             </Routes>
-          </main>
+          </Box>
         </div>
       </Router>
     </ContactProvider>

@@ -1,8 +1,21 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useContacts } from '../context/ContactContext';
 import LoadingSpinner from '../components/LoadingSpinner';
 import ErrorMessage from '../components/ErrorMessage';
 import '../styles/Contact.css';
+import { Card, CardContent, Grid, Typography, Box, Paper } from '@mui/material';
+import { Doughnut, Bar } from 'react-chartjs-2';
+import {
+  Chart as ChartJS,
+  ArcElement,
+  Tooltip,
+  Legend,
+  CategoryScale,
+  LinearScale,
+  BarElement,
+} from 'chart.js';
+
+ChartJS.register(ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement);
 
 function Statistics() {
   const { state, actions } = useContacts();
@@ -66,6 +79,46 @@ function Statistics() {
 
   const currentStats = calculateStats();
 
+  const categoryChartData = useMemo(() => {
+    const labels = Object.keys(currentStats.byCategory);
+    const values = Object.values(currentStats.byCategory);
+    return {
+      labels,
+      datasets: [
+        {
+          label: 'Contactos por categoría',
+          data: values,
+          backgroundColor: [
+            '#1976d2', '#9c27b0', '#2ecc71', '#f39c12',
+            '#e91e63', '#00bcd4', '#ff9800', '#34495e'
+          ],
+          borderWidth: 0,
+        },
+      ],
+    };
+  }, [currentStats.byCategory]);
+
+  const totalsChartData = useMemo(() => {
+    const labels = ['Total', 'Favoritos', 'Con Email', 'Con Teléfono'];
+    const values = [
+      currentStats.total,
+      currentStats.favorites,
+      currentStats.withEmail,
+      currentStats.withPhone,
+    ];
+    return {
+      labels,
+      datasets: [
+        {
+          label: 'Resumen',
+          data: values,
+          backgroundColor: '#1976d2',
+          borderRadius: 6,
+        },
+      ],
+    };
+  }, [currentStats.total, currentStats.favorites, currentStats.withEmail, currentStats.withPhone]);
+
   if (loading) {
     return <LoadingSpinner text="Cargando estadísticas..." />;
   }
@@ -83,111 +136,82 @@ function Statistics() {
   }
 
   return (
-    <div className="statistics-page">
-      <div className="page-header">
-        <h1>📊 Estadísticas de Contactos</h1>
-        <p>Resumen completo de tu agenda personal</p>
-      </div>
+    <Box sx={{ px: 2, py: 3, maxWidth: 1200, mx: 'auto' }}>
+      <Typography variant="h4" fontWeight={700} gutterBottom>📊 Estadísticas de Contactos</Typography>
+      <Typography variant="body1" color="text.secondary" gutterBottom>
+        Resumen visual de tu agenda personal
+      </Typography>
 
-      <div className="stats-grid">
-        {/* Tarjetas de estadísticas principales */}
-        <div className="stat-card primary">
-          <div className="stat-icon">👥</div>
-          <div className="stat-content">
-            <h3>Total de Contactos</h3>
-            <div className="stat-number">{currentStats.total}</div>
-          </div>
-        </div>
+      <Grid container spacing={2} sx={{ mb: 2 }}>
+        <Grid item xs={12} md={3}>
+          <Card variant="outlined"><CardContent>
+            <Typography variant="subtitle2" color="text.secondary">Total de Contactos</Typography>
+            <Typography variant="h4">{currentStats.total}</Typography>
+          </CardContent></Card>
+        </Grid>
+        <Grid item xs={12} md={3}>
+          <Card variant="outlined"><CardContent>
+            <Typography variant="subtitle2" color="text.secondary">Favoritos</Typography>
+            <Typography variant="h4">{currentStats.favorites}</Typography>
+          </CardContent></Card>
+        </Grid>
+        <Grid item xs={12} md={3}>
+          <Card variant="outlined"><CardContent>
+            <Typography variant="subtitle2" color="text.secondary">Con Email</Typography>
+            <Typography variant="h4">{currentStats.withEmail}</Typography>
+          </CardContent></Card>
+        </Grid>
+        <Grid item xs={12} md={3}>
+          <Card variant="outlined"><CardContent>
+            <Typography variant="subtitle2" color="text.secondary">Con Teléfono</Typography>
+            <Typography variant="h4">{currentStats.withPhone}</Typography>
+          </CardContent></Card>
+        </Grid>
+      </Grid>
 
-        <div className="stat-card success">
-          <div className="stat-icon">⭐</div>
-          <div className="stat-content">
-            <h3>Favoritos</h3>
-            <div className="stat-number">{currentStats.favorites}</div>
-            <div className="stat-percentage">
-              {currentStats.total > 0 ? Math.round((currentStats.favorites / currentStats.total) * 100) : 0}%
-            </div>
-          </div>
-        </div>
+      <Grid container spacing={2}>
+        <Grid item xs={12} md={6}>
+          <Paper variant="outlined" sx={{ p: 2 }}>
+            <Typography variant="subtitle1" gutterBottom>Distribución por Categoría</Typography>
+            {Object.keys(currentStats.byCategory).length === 0 ? (
+              <Typography color="text.secondary">No hay categorías asignadas</Typography>
+            ) : (
+              <Doughnut data={categoryChartData} />
+            )}
+          </Paper>
+        </Grid>
+        <Grid item xs={12} md={6}>
+          <Paper variant="outlined" sx={{ p: 2 }}>
+            <Typography variant="subtitle1" gutterBottom>Resumen General</Typography>
+            <Bar data={totalsChartData} options={{ responsive: true, plugins: { legend: { display: false } } }} />
+          </Paper>
+        </Grid>
+      </Grid>
 
-        <div className="stat-card info">
-          <div className="stat-icon">📧</div>
-          <div className="stat-content">
-            <h3>Con Email</h3>
-            <div className="stat-number">{currentStats.withEmail}</div>
-            <div className="stat-percentage">
-              {currentStats.total > 0 ? Math.round((currentStats.withEmail / currentStats.total) * 100) : 0}%
-            </div>
-          </div>
-        </div>
-
-        <div className="stat-card warning">
-          <div className="stat-icon">📱</div>
-          <div className="stat-content">
-            <h3>Con Teléfono</h3>
-            <div className="stat-number">{currentStats.withPhone}</div>
-            <div className="stat-percentage">
-              {currentStats.total > 0 ? Math.round((currentStats.withPhone / currentStats.total) * 100) : 0}%
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div className="stats-details">
-        {/* Distribución por categorías */}
-        <div className="stats-section">
-          <h2>🏷️ Distribución por Categorías</h2>
-          {Object.keys(currentStats.byCategory).length === 0 ? (
-            <p className="no-data">No hay categorías asignadas</p>
-          ) : (
-            <div className="category-stats">
-              {Object.entries(currentStats.byCategory).map(([category, count]) => (
-                <div key={category} className="category-stat">
-                  <div className="category-name">{category}</div>
-                  <div className="category-bar">
-                    <div 
-                      className="category-fill" 
-                      style={{ 
-                        width: `${(count / currentStats.total) * 100}%`,
-                        backgroundColor: getCategoryColor(category)
-                      }}
-                    ></div>
-                  </div>
-                  <div className="category-count">{count}</div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Contactos recientes */}
-        <div className="stats-section">
-          <h2>🕒 Contactos Recientes</h2>
-          {currentStats.recentContacts.length === 0 ? (
-            <p className="no-data">No hay contactos recientes</p>
-          ) : (
-            <div className="recent-contacts">
-              {currentStats.recentContacts.map(contact => (
-                <div key={contact.id} className="recent-contact">
-                  <div className="contact-avatar">
-                    {contact.nombre.charAt(0).toUpperCase()}
-                  </div>
-                  <div className="contact-info">
-                    <div className="contact-name">
-                      {contact.nombre} {contact.apellido}
-                    </div>
-                    <div className="contact-date">
-                      {new Date(contact.fechaCreacion).toLocaleDateString()}
-                    </div>
-                  </div>
-                  {contact.favorito && <span className="favorite-badge">⭐</span>}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
+      <Box sx={{ mt: 2 }}>
+        <Typography variant="subtitle1" gutterBottom>🕒 Contactos Recientes</Typography>
+        {currentStats.recentContacts.length === 0 ? (
+          <Typography color="text.secondary">No hay contactos recientes</Typography>
+        ) : (
+          <Grid container spacing={2}>
+            {currentStats.recentContacts.map(contact => (
+              <Grid item xs={12} md={6} key={contact.id}>
+                <Paper variant="outlined" sx={{ p: 2, display: 'flex', alignItems: 'center', gap: 2 }}>
+                  <Box sx={{ width: 44, height: 44, borderRadius: '50%', bgcolor: 'primary.main', color: '#fff', display: 'grid', placeItems: 'center', fontWeight: 700 }}>
+                    {contact.nombre?.charAt(0).toUpperCase()}
+                  </Box>
+                  <Box sx={{ flex: 1 }}>
+                    <Typography variant="subtitle1">{contact.nombre} {contact.apellido}</Typography>
+                    <Typography variant="caption" color="text.secondary">{new Date(contact.fechaCreacion).toLocaleDateString()}</Typography>
+                  </Box>
+                  {contact.favorito && <Box aria-label="favorito">⭐</Box>}
+                </Paper>
+              </Grid>
+            ))}
+          </Grid>
+        )}
+      </Box>
+    </Box>
   );
 }
 

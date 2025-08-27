@@ -1,5 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { useContacts } from '../context/ContactContext';
+import { TextField, Grid, Checkbox, FormControlLabel, Button, Paper, MenuItem, Stack } from '@mui/material';
+import {
+  validateName,
+  validatePhone,
+  validateEmail,
+  validateAddress,
+  validateNotes,
+  validateBirthDate,
+} from '../utils/validators';
 
 function ContactForm({ contact, onSubmit, onCancel }) {
   const { state, actions } = useContacts();
@@ -14,6 +23,7 @@ function ContactForm({ contact, onSubmit, onCancel }) {
     categoriaId: '',
     favorito: false,
   });
+  const [errors, setErrors] = useState({});
 
   useEffect(() => {
     if (contact) {
@@ -41,10 +51,32 @@ function ContactForm({ contact, onSubmit, onCancel }) {
       ...prev,
       [name]: type === 'checkbox' ? checked : value,
     }));
+
+    // Validación por campo
+    let err = null;
+    if (name === 'nombre') err = validateName(value);
+    if (name === 'telefono') err = validatePhone(value);
+    if (name === 'email') err = validateEmail(value);
+    if (name === 'direccion') err = validateAddress(value);
+    if (name === 'notas') err = validateNotes(value);
+    if (name === 'fechaNacimiento') err = validateBirthDate(value);
+    setErrors(prev => ({ ...prev, [name]: err }));
   };
 
   const handleSubmit = (e) => {
     e.preventDefault();
+    // Validación global mínima antes de enviar
+    const newErrors = {
+      nombre: validateName(formData.nombre),
+      telefono: validatePhone(formData.telefono),
+      email: validateEmail(formData.email),
+      direccion: validateAddress(formData.direccion),
+      notas: validateNotes(formData.notas),
+      fechaNacimiento: validateBirthDate(formData.fechaNacimiento),
+    };
+    setErrors(newErrors);
+    const hasError = Object.values(newErrors).some(Boolean);
+    if (hasError) return;
     onSubmit(formData);
   };
 
@@ -52,127 +84,54 @@ function ContactForm({ contact, onSubmit, onCancel }) {
   const categories = Array.isArray(state.categories) ? state.categories : [];
 
   return (
-    <form onSubmit={handleSubmit} className="contact-form">
-      <div className="form-row">
-        <div className="form-group">
-          <label htmlFor="nombre">Nombre *</label>
-          <input
-            type="text"
-            id="nombre"
-            name="nombre"
-            value={formData.nombre}
-            onChange={handleChange}
-            required
-          />
-        </div>
-        <div className="form-group">
-          <label htmlFor="apellido">Apellido</label>
-          <input
-            type="text"
-            id="apellido"
-            name="apellido"
-            value={formData.apellido}
-            onChange={handleChange}
-          />
-        </div>
-      </div>
+    <Paper variant="outlined" sx={{ p: 2 }}>
+      <Grid container spacing={2} component="form" onSubmit={handleSubmit}>
+        <Grid item xs={12} md={6}>
+          <TextField label="Nombre" name="nombre" value={formData.nombre} onChange={handleChange} fullWidth required error={!!errors.nombre} helperText={errors.nombre || ''} />
+        </Grid>
+        <Grid item xs={12} md={6}>
+          <TextField label="Apellido" name="apellido" value={formData.apellido} onChange={handleChange} fullWidth />
+        </Grid>
 
-      <div className="form-row">
-        <div className="form-group">
-          <label htmlFor="telefono">Teléfono *</label>
-          <input
-            type="tel"
-            id="telefono"
-            name="telefono"
-            value={formData.telefono}
-            onChange={handleChange}
-            required
-          />
-        </div>
-        <div className="form-group">
-          <label htmlFor="email">Email</label>
-          <input
-            type="email"
-            id="email"
-            name="email"
-            value={formData.email}
-            onChange={handleChange}
-          />
-        </div>
-      </div>
+        <Grid item xs={12} md={6}>
+          <TextField label="Teléfono" name="telefono" value={formData.telefono} onChange={handleChange} fullWidth required error={!!errors.telefono} helperText={errors.telefono || ''} />
+        </Grid>
+        <Grid item xs={12} md={6}>
+          <TextField label="Email" name="email" type="email" value={formData.email} onChange={handleChange} fullWidth error={!!errors.email} helperText={errors.email || ''} />
+        </Grid>
 
-      <div className="form-group">
-        <label htmlFor="direccion">Dirección</label>
-        <input
-          type="text"
-          id="direccion"
-          name="direccion"
-          value={formData.direccion}
-          onChange={handleChange}
-        />
-      </div>
+        <Grid item xs={12}>
+          <TextField label="Dirección" name="direccion" value={formData.direccion} onChange={handleChange} fullWidth error={!!errors.direccion} helperText={errors.direccion || ''} />
+        </Grid>
 
-      <div className="form-row">
-        <div className="form-group">
-          <label htmlFor="fechaNacimiento">Fecha de Nacimiento</label>
-          <input
-            type="date"
-            id="fechaNacimiento"
-            name="fechaNacimiento"
-            value={formData.fechaNacimiento}
-            onChange={handleChange}
-          />
-        </div>
-        <div className="form-group">
-          <label htmlFor="categoriaId">Categoría</label>
-          <select
-            id="categoriaId"
-            name="categoriaId"
-            value={formData.categoriaId}
-            onChange={handleChange}
-          >
-            <option value="">Seleccionar categoría</option>
+        <Grid item xs={12} md={6}>
+          <TextField label="Fecha de Nacimiento" name="fechaNacimiento" type="date" value={formData.fechaNacimiento} onChange={handleChange} fullWidth InputLabelProps={{ shrink: true }} />
+        </Grid>
+        <Grid item xs={12} md={6}>
+          <TextField select label="Categoría" name="categoriaId" value={formData.categoriaId} onChange={handleChange} fullWidth>
+            <MenuItem value="">Seleccionar categoría</MenuItem>
             {categories.map(category => (
-              <option key={category.id} value={category.id}>
-                {category.nombre}
-              </option>
+              <MenuItem key={category.id} value={category.id}>{category.nombre}</MenuItem>
             ))}
-          </select>
-        </div>
-      </div>
+          </TextField>
+        </Grid>
 
-      <div className="form-group">
-        <label htmlFor="notas">Notas</label>
-        <textarea
-          id="notas"
-          name="notas"
-          value={formData.notas}
-          onChange={handleChange}
-          rows="3"
-        />
-      </div>
+        <Grid item xs={12}>
+          <TextField label="Notas" name="notas" value={formData.notas} onChange={handleChange} fullWidth multiline rows={3} error={!!errors.notas} helperText={errors.notas || ''} />
+        </Grid>
 
-      <div className="form-group checkbox-group">
-        <label>
-          <input
-            type="checkbox"
-            name="favorito"
-            checked={formData.favorito}
-            onChange={handleChange}
-          />
-          Contacto favorito
-        </label>
-      </div>
+        <Grid item xs={12}>
+          <FormControlLabel control={<Checkbox name="favorito" checked={formData.favorito} onChange={handleChange} />} label="Contacto favorito" />
+        </Grid>
 
-      <div className="form-actions">
-        <button type="submit" className="btn btn-primary">
-          {contact ? 'Actualizar' : 'Crear'} Contacto
-        </button>
-        <button type="button" className="btn btn-secondary" onClick={onCancel}>
-          Cancelar
-        </button>
-      </div>
-    </form>
+        <Grid item xs={12}>
+          <Stack direction="row" spacing={1} justifyContent="flex-end">
+            <Button type="button" variant="text" onClick={onCancel}>Cancelar</Button>
+            <Button type="submit" variant="contained" disabled={!!errors.nombre || !!errors.telefono}>{contact ? 'Actualizar' : 'Crear'} Contacto</Button>
+          </Stack>
+        </Grid>
+      </Grid>
+    </Paper>
   );
 }
 

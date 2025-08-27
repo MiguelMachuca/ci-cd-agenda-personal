@@ -3,6 +3,9 @@ import { useContacts } from '../context/ContactContext';
 import LoadingSpinner from '../components/LoadingSpinner';
 import ErrorMessage from '../components/ErrorMessage';
 import '../styles/Contact.css';
+import { Box, Grid, Paper, TextField, Button, Typography, Stack, IconButton, Card, CardContent, CardActions, Chip } from '@mui/material';
+import EditIcon from '@mui/icons-material/Edit';
+import DeleteIcon from '@mui/icons-material/Delete';
 
 function Categories() {
   const { state, actions } = useContacts();
@@ -68,11 +71,9 @@ function Categories() {
   const categories = Array.isArray(state.categories) ? state.categories : [];
 
   return (
-    <div className="categories-page">
-      <div className="page-header">
-        <h1>🏷️ Gestión de Categorías</h1>
-        <p>Organiza tus contactos con categorías personalizadas</p>
-      </div>
+    <Box sx={{ px: 2, py: 2 }}>
+      <Typography variant="h5" fontWeight={700} sx={{ mb: 1 }}>🏷️ Gestión de Categorías</Typography>
+      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>Organiza tus contactos con categorías personalizadas</Typography>
 
       {state.error && (
         <ErrorMessage 
@@ -83,112 +84,54 @@ function Categories() {
         />
       )}
 
-      <div className="categories-content">
-        <div className="category-form-section">
-          <h2>{editingCategory ? '✏️ Editar Categoría' : '➕ Nueva Categoría'}</h2>
-          
-          <form onSubmit={handleSubmit} className="category-form">
-            <div className="form-row">
-              <div className="form-group">
-                <label htmlFor="nombre">Nombre *</label>
-                <input
-                  type="text"
-                  id="nombre"
-                  value={newCategory.nombre}
-                  onChange={(e) => setNewCategory({ ...newCategory, nombre: e.target.value })}
-                  placeholder="Ej: Trabajo, Familia, Amigos"
-                  required
-                />
-              </div>
-              
-              <div className="form-group">
-                <label htmlFor="color">Color</label>
-                <input
-                  type="color"
-                  id="color"
-                  value={newCategory.color}
-                  onChange={(e) => setNewCategory({ ...newCategory, color: e.target.value })}
-                />
-              </div>
-            </div>
-
-            <div className="form-group">
-              <label htmlFor="descripcion">Descripción</label>
-              <textarea
-                id="descripcion"
-                value={newCategory.descripcion}
-                onChange={(e) => setNewCategory({ ...newCategory, descripcion: e.target.value })}
-                placeholder="Descripción opcional de la categoría"
-                rows="3"
-              />
-            </div>
-
-            <div className="form-actions">
-              <button 
-                type="submit" 
-                className="btn btn-primary"
-                disabled={isSubmitting || !newCategory.nombre.trim()}
-              >
-                {isSubmitting ? 'Guardando...' : (editingCategory ? 'Actualizar' : 'Crear')}
-              </button>
-              
-              {editingCategory && (
-                <button 
-                  type="button" 
-                  className="btn btn-secondary" 
-                  onClick={handleCancel}
-                >
-                  Cancelar
-                </button>
-              )}
-            </div>
-          </form>
-        </div>
-
-        <div className="categories-list-section">
-          <h2>📋 Categorías Existentes</h2>
-          
+      <Grid container spacing={2}>
+        <Grid item xs={12} md={5}>
+          <Paper variant="outlined" sx={{ p: 2 }}>
+            <Typography variant="subtitle1" gutterBottom>{editingCategory ? '✏️ Editar Categoría' : '➕ Nueva Categoría'}</Typography>
+            <Box component="form" onSubmit={handleSubmit}>
+              <Stack spacing={2}>
+                <TextField label="Nombre *" value={newCategory.nombre} onChange={(e) => setNewCategory({ ...newCategory, nombre: e.target.value })} required />
+                <Stack direction="row" spacing={2} alignItems="center">
+                  <TextField label="Color" value={newCategory.color} onChange={(e) => setNewCategory({ ...newCategory, color: e.target.value })} sx={{ width: 120 }} />
+                  <input type="color" value={newCategory.color} onChange={(e) => setNewCategory({ ...newCategory, color: e.target.value })} style={{ border: 'none', background: 'transparent', width: 40, height: 40 }} />
+                </Stack>
+                <TextField label="Descripción" value={newCategory.descripcion} onChange={(e) => setNewCategory({ ...newCategory, descripcion: e.target.value })} multiline rows={3} />
+                <Stack direction="row" spacing={1} justifyContent="flex-end">
+                  {editingCategory && <Button type="button" onClick={handleCancel}>Cancelar</Button>}
+                  <Button type="submit" variant="contained" disabled={isSubmitting || !newCategory.nombre.trim()}>{isSubmitting ? 'Guardando...' : (editingCategory ? 'Actualizar' : 'Crear')}</Button>
+                </Stack>
+              </Stack>
+            </Box>
+          </Paper>
+        </Grid>
+        <Grid item xs={12} md={7}>
+          <Typography variant="subtitle1" gutterBottom>📋 Categorías Existentes</Typography>
           {categories.length === 0 ? (
-            <div className="no-categories">
-              <p>No hay categorías creadas. ¡Crea la primera!</p>
-            </div>
+            <Typography color="text.secondary">No hay categorías creadas. ¡Crea la primera!</Typography>
           ) : (
-            <div className="categories-grid">
+            <Grid container spacing={2}>
               {categories.map(category => (
-                <div key={category.id} className="category-card">
-                  <div 
-                    className="category-color" 
-                    style={{ backgroundColor: category.color || '#3498db' }}
-                  ></div>
-                  
-                  <div className="category-info">
-                    <h3 className="category-name">{category.nombre}</h3>
-                    {category.descripcion && (
-                      <p className="category-description">{category.descripcion}</p>
-                    )}
-                  </div>
-                  
-                  <div className="category-actions">
-                    <button
-                      className="btn btn-secondary btn-sm"
-                      onClick={() => handleEdit(category)}
-                    >
-                      ✏️
-                    </button>
-                    <button
-                      className="btn btn-danger btn-sm"
-                      onClick={() => handleDelete(category.id)}
-                    >
-                      🗑️
-                    </button>
-                  </div>
-                </div>
+                <Grid item xs={12} sm={6} key={category.id}>
+                  <Card variant="outlined">
+                    <CardContent>
+                      <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
+                        <Box sx={{ width: 16, height: 16, borderRadius: '4px', bgcolor: category.color || '#3498db' }} />
+                        <Typography variant="h6">{category.nombre}</Typography>
+                      </Stack>
+                      {category.descripcion && <Typography variant="body2" color="text.secondary">{category.descripcion}</Typography>}
+                    </CardContent>
+                    <CardActions sx={{ justifyContent: 'flex-end' }}>
+                      <Button size="small" startIcon={<EditIcon />} onClick={() => handleEdit(category)}>Editar</Button>
+                      <Button size="small" color="error" startIcon={<DeleteIcon />} onClick={() => handleDelete(category.id)}>Eliminar</Button>
+                    </CardActions>
+                  </Card>
+                </Grid>
               ))}
-            </div>
+            </Grid>
           )}
-        </div>
-      </div>
-    </div>
+        </Grid>
+      </Grid>
+    </Box>
   );
 }
 

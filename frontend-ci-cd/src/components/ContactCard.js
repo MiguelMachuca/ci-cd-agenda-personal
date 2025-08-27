@@ -1,50 +1,34 @@
 import React from 'react';
-import { formatPhoneNumber, formatDate } from '../utils/formatters';
+import { formatPhoneNumber } from '../utils/formatters';
+import { Card, CardContent, CardActions, Typography, IconButton, Stack, Button, Chip } from '@mui/material';
+import FavoriteIcon from '@mui/icons-material/Star';
+import FavoriteBorderIcon from '@mui/icons-material/StarBorder';
+import EditIcon from '@mui/icons-material/Edit';
+import DeleteIcon from '@mui/icons-material/Delete';
 
 const ContactCard = ({ contact, onEdit, onDelete, onToggleFavorite }) => {
   return (
-    <div className="contact-card">
-      <div className="contact-header">
-        <h3 className="contact-name">
-          {contact.nombre} {contact.apellido}
-          {contact.favorito && <span className="favorite-star">⭐</span>}
-        </h3>
-        <button 
-          className={`favorite-btn ${contact.favorito ? 'active' : ''}`}
-          onClick={() => onToggleFavorite(contact.id, !contact.favorito)}
-        >
-          {contact.favorito ? '★' : '☆'}
-        </button>
-      </div>
-      
-      <div className="contact-details">
-        <p className="contact-detail">
-          <span className="detail-icon">📞</span>
-          {formatPhoneNumber(contact.telefono)}
-        </p>
-        {contact.email && (
-          <p className="contact-detail">
-            <span className="detail-icon">✉️</span>
-            {contact.email}
-          </p>
-        )}
-        {contact.categoria && (
-          <p className="contact-detail">
-            <span className="detail-icon">🏷️</span>
-            {contact.categoria.nombre}
-          </p>
-        )}
-      </div>
-      
-      <div className="contact-actions">
-        <button className="btn btn-primary" onClick={() => onEdit(contact.id)}>
-          Editar
-        </button>
-        <button className="btn btn-danger" onClick={() => onDelete(contact.id)}>
-          Eliminar
-        </button>
-      </div>
-    </div>
+    <Card variant="outlined" sx={{ height: '100%' }}>
+      <CardContent>
+        <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1}>
+          <Typography variant="h6" fontWeight={600}>
+            {contact.nombre} {contact.apellido}
+          </Typography>
+          <IconButton color={contact.favorito ? 'warning' : 'default'} onClick={() => onToggleFavorite(contact.id, !contact.favorito)}>
+            {contact.favorito ? <FavoriteIcon /> : <FavoriteBorderIcon />}
+          </IconButton>
+        </Stack>
+        <Stack spacing={0.5} sx={{ mt: 1 }}>
+          <Typography variant="body2">📞 {formatPhoneNumber(contact.telefono)}</Typography>
+          {contact.email && <Typography variant="body2">✉️ {contact.email}</Typography>}
+          {contact.categoria && <Chip size="small" label={contact.categoria.nombre} />}
+        </Stack>
+      </CardContent>
+      <CardActions sx={{ justifyContent: 'flex-end' }}>
+        <Button size="small" startIcon={<EditIcon />} onClick={() => onEdit(contact.id)}>Editar</Button>
+        <Button size="small" color="error" startIcon={<DeleteIcon />} onClick={() => onDelete(contact.id)}>Eliminar</Button>
+      </CardActions>
+    </Card>
   );
 };
 

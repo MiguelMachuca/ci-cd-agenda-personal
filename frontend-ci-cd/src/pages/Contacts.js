@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useContacts } from '../context/ContactContext';
 import ContactList from '../components/ContactList';
-import SearchBar from '../components/SearchBar';
-import CategoryFilter from '../components/CategoryFilter';
 import '../styles/Contact.css';
+import { Box, Grid, Paper, TextField, Button, IconButton, MenuItem, Stack, Pagination, Typography, Switch, FormControlLabel } from '@mui/material';
+import FilterListIcon from '@mui/icons-material/FilterList';
 
 function Contacts() {
   const { state, actions } = useContacts();
@@ -14,20 +14,19 @@ function Contacts() {
     actions.loadCategories();
   }, []);
 
-  const handleSearch = (term) => {
-    if (term.trim()) {
-      actions.searchContacts(term);
-    } else {
-      actions.loadContacts();
-    }
+  const [search, setSearch] = useState('');
+  const [category, setCategory] = useState('');
+  const [onlyFavs, setOnlyFavs] = useState(false);
+
+  const handleSearch = () => {
+    if (search.trim()) actions.searchContacts(search);
+    else actions.loadContacts();
   };
 
-  const handleCategoryFilter = (category) => {
-    if (category) {
-      actions.loadContactsByCategory(category);
-    } else {
-      actions.loadContacts();
-    }
+  const handleCategoryFilter = (cat) => {
+    setCategory(cat);
+    if (cat) actions.loadContactsByCategory(cat);
+    else actions.loadContacts();
   };
 
   const handleToggleFavorite = async (id, favorite) => {
@@ -49,45 +48,39 @@ function Contacts() {
     }
   };
 
-  const handlePageChange = (newPage) => {
-    actions.loadContacts(newPage, state.pagination.size);
+  const handlePageChange = (_e, pageOneBased) => {
+    actions.loadContacts(pageOneBased - 1, state.pagination.size);
   };
 
-  return (
-    <div className="contacts-page">
-      <div className="page-header">
-        <h1>Mis Contactos</h1>
-        <button 
-          className="btn btn-primary"
-          onClick={() => window.location.href = '/add-contact'}
-        >
-          Nuevo Contacto
-        </button>
-      </div>
+  const categories = Array.isArray(state.categories) ? state.categories : [];
 
-      <div className="filters-section">
-        <SearchBar onSearch={handleSearch} />
-        <button 
-          className="btn btn-secondary filter-toggle"
-          onClick={() => setShowFilters(!showFilters)}
-        >
-          {showFilters ? 'Ocultar Filtros' : 'Mostrar Filtros'}
-        </button>
-        
-        {showFilters && (
-          <div className="advanced-filters">
-            <CategoryFilter 
-              categories={state.categories} 
-              onCategoryChange={handleCategoryFilter}
-            />
-          </div>
-        )}
-      </div>
+  return (
+    <Box sx={{ px: 2, py: 2 }}>
+      <Grid container alignItems="center" justifyContent="space-between" sx={{ mb: 2 }}>
+        <Grid item>
+          <Typography variant="h5" fontWeight={700}>Mis Contactos</Typography>
+        </Grid>
+        <Grid item>
+          <Button variant="contained" onClick={() => window.location.href = '/add-contact'}>Nuevo Contacto</Button>
+        </Grid>
+      </Grid>
+
+      <Paper variant="outlined" sx={{ p: 2, mb: 2 }}>
+        <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} alignItems={{ md: 'center' }}>
+          <TextField value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar contactos..." fullWidth />
+          <IconButton color="primary" onClick={handleSearch}><FilterListIcon /></IconButton>
+          <TextField select value={category} onChange={(e) => handleCategoryFilter(e.target.value)} label="Categoría" sx={{ minWidth: 200 }}>
+            <MenuItem value="">Todas</MenuItem>
+            {categories.map(cat => <MenuItem key={cat.id} value={cat.id}>{cat.nombre}</MenuItem>)}
+          </TextField>
+          <FormControlLabel control={<Switch checked={onlyFavs} onChange={(e) => setOnlyFavs(e.target.checked)} />} label="Favoritos" />
+        </Stack>
+      </Paper>
 
       {state.loading ? (
-        <div className="loading">Cargando contactos...</div>
+        <Typography>Cargando contactos...</Typography>
       ) : state.error ? (
-        <div className="error">Error: {state.error}</div>
+        <Typography color="error">Error: {state.error}</Typography>
       ) : (
         <>
           <ContactList
@@ -96,31 +89,15 @@ function Contacts() {
             onDelete={handleDelete}
             onToggleFavorite={handleToggleFavorite}
           />
-          
+
           {state.pagination.totalPages > 1 && (
-            <div className="pagination">
-              <button
-                disabled={state.pagination.page === 0}
-                onClick={() => handlePageChange(state.pagination.page - 1)}
-              >
-                Anterior
-              </button>
-              
-              <span>
-                Página {state.pagination.page + 1} de {state.pagination.totalPages}
-              </span>
-              
-              <button
-                disabled={state.pagination.page >= state.pagination.totalPages - 1}
-                onClick={() => handlePageChange(state.pagination.page + 1)}
-              >
-                Siguiente
-              </button>
-            </div>
+            <Stack alignItems="center" sx={{ mt: 2 }}>
+              <Pagination count={state.pagination.totalPages} page={state.pagination.page + 1} onChange={handlePageChange} />
+            </Stack>
           )}
         </>
       )}
-    </div>
+    </Box>
   );
 }
 
