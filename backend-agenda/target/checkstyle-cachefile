@@ -1,0 +1,7 @@
+#Thu Aug 28 16:35:05 BOT 2025
+/home/mangelmy/Desarrollo/DDS-V1-E1/entornos_CI_CD/Proyecto\ Agenda/backend-agenda/src/main/resources/application-docker.properties=1756383962121
+/home/mangelmy/Desarrollo/DDS-V1-E1/entornos_CI_CD/Proyecto\ Agenda/backend-agenda/src/main/resources/application-mysql.properties=1756383962121
+/home/mangelmy/Desarrollo/DDS-V1-E1/entornos_CI_CD/Proyecto\ Agenda/backend-agenda/src/main/resources/application.properties=1756383962121
+configuration*?=1C9A1618AFE1678234CC57FC818B192EC28E316F
+module-resource*?\:checkstyle-suppressions.xml=F44CFB9FCA00AD964B67539853CFBC155F434069
+module-resource*?\:checkstyle-xpath-suppressions.xml=6ABDDE857244D19F57A7B58459742586284A37E5

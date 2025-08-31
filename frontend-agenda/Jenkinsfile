@@ -1,0 +1,434 @@
+pipeline {
+    agent any
+    
+    environment {
+        // Variables de entorno
+        APP_NAME = "mi-react-app"
+        VERSION = "${env.BRANCH_NAME == 'main' ? env.BUILD_NUMBER : "${env.BRANCH_NAME}-${env.BUILD_NUMBER}"}"
+        
+        // Configuración de la MV
+        DEPLOY_SERVER = "192.168.1.100"
+        DEPLOY_USER = "deployuser"
+        DEPLOY_PATH = "/var/www/html/${APP_NAME}"
+        SSH_CREDENTIALS = "vm-ssh-key"
+        
+        // Variables de build
+        NODE_VERSION = '18.x'
+    }
+    
+    options {
+        buildDiscarder(logRotator(numToKeepStr: '10'))
+        timeout(time: 30, unit: 'MINUTES')
+        disableConcurrentBuilds()
+        ansiColor('xterm')
+    }
+    
+    stages {
+        // Stage 1: Checkout del código
+        stage('Checkout') {
+            steps {
+                checkout scm
+                script {
+                    currentBuild.displayName = "#${env.BUILD_NUMBER} - ${env.GIT_BRANCH}"
+                    currentBuild.description = "Commit: ${env.GIT_COMMIT.take(8)}"
+                }
+            }
+        }
+        
+        // Stage 2: Setup Node.js
+        stage('Setup Node.js') {
+            steps {
+                script {
+                    // Instalar Node.js version específica
+                    sh """
+                        curl -fsSL https://deb.nodesource.com/setup_${NODE_VERSION} | sudo -E bash -
+                        sudo apt-get install -y nodejs
+                    """
+                    
+                    // Verificar versiones
+                    sh 'node --version'
+                    sh 'npm --version'
+                }
+            }
+        }
+        
+        // Stage 3: Instalar dependencias
+        stage('Install Dependencies') {
+            steps {
+                sh 'npm ci --prefer-offline --no-audit'
+                
+                // Cache de node_modules para builds futuros
+                script {
+                    if (fileExists('node_modules')) {
+                        stash name: 'node_modules', includes: 'node_modules/**/*'
+                    }
+                }
+            }
+        }
+        
+        // Stage 4: Linting y análisis de código
+        stage('Code Quality') {
+            parallel {
+                stage('ESLint') {
+                    steps {
+                        sh 'npm run lint || true'  // Continúa aunque falle el linting
+                    }
+                    
+                    post {
+                        always {
+                            recordIssues(
+                                tools: [esLint(pattern: '**/eslint-report.xml')],
+                                qualityGates: [[threshold: 1, type: 'TOTAL', unstable: true]]
+                            )
+                        }
+                    }
+                }
+                
+                stage 'Security Audit' {
+                    steps {
+                        sh 'npm audit --audit-level moderate || true'  // No falla el build por warnings
+                    }
+                }
+            }
+        }
+        
+        // Stage 5: Testing
+        stage('Test') {
+            parallel {
+                stage('Unit Tests') {
+                    steps {
+                        sh 'npm test -- --coverage --watchAll=false --passWithNoTests'
+                    }
+                    
+                    post {
+                        always {
+                            junit 'reports/junit/*.xml'
+                            
+                            // Reporte de cobertura
+                            publishHTML(
+                                target: [
+                                    allowMissing: true,
+                                    alwaysLinkToLastBuild: false,
+                                    keepAll: true,
+                                    reportDir: 'coverage/lcov-report',
+                                    reportFiles: 'index.html',
+                                    reportName: 'Test Coverage Report'
+                                ]
+                            )
+                        }
+                    }
+                }
+                
+                stage('Build Verification') {
+                    steps {
+                        sh 'npm run build'
+                    }
+                }
+            }
+        }
+        
+        // Stage 6: Build de producción
+        stage('Build Production') {
+            steps {
+                sh 'npm run build'
+                
+                // Crear archivo de versión
+                sh """
+                    echo "Build: ${VERSION}" > build/version.txt
+                    echo "Branch: ${env.BRANCH_NAME}" >> build/version.txt
+                    echo "Commit: ${env.GIT_COMMIT}" >> build/version.txt
+                    echo "Date: \$(date)" >> build/version.txt
+                """
+                
+                // Archivar build
+                archiveArtifacts artifacts: 'build/**/*', fingerprint: true
+            }
+        }
+        
+        // Stage 7: Análisis de bundle
+        stage('Bundle Analysis') {
+            steps {
+                script {
+                    try {
+                        sh 'npm install --save-dev webpack-bundle-analyzer'
+                        sh 'npm run build -- --profile --json > build/stats.json'
+                        
+                        // Generar reporte de análisis
+                        sh 'npx webpack-bundle-analyzer build/stats.json build/ -r report.html'
+                        
+                        publishHTML(
+                            target: [
+                                allowMissing: true,
+                                alwaysLinkToLastBuild: false,
+                                keepAll: true,
+                                reportDir: '.',
+                                reportFiles: 'report.html',
+                                reportName: 'Bundle Analysis Report'
+                            ]
+                        )
+                    } catch (Exception e) {
+                        echo "⚠️ Bundle analysis skipped: ${e.message}"
+                    }
+                }
+            }
+        }
+        
+        // Stage 8: Preparar despliegue
+        stage('Prepare Deployment') {
+            when {
+                expression { 
+                    return env.BRANCH_NAME == 'main' || env.BRANCH_NAME == 'develop' 
+                }
+            }
+            
+            steps {
+                script {
+                    // Crear script de despliegue
+                    sh """
+                        cat > deploy.sh << 'EOF'
+                        #!/bin/bash
+                        set -e
+                        
+                        APP_NAME="${APP_NAME}"
+                        DEPLOY_PATH="${DEPLOY_PATH}"
+                        BACKUP_DIR="\${DEPLOY_PATH}/backups"
+                        
+                        echo "🚀 Iniciando despliegue de React app..."
+                        
+                        # Crear directorios si no existen
+                        sudo mkdir -p \${DEPLOY_PATH}
+                        sudo mkdir -p \${BACKUP_DIR}
+                        sudo chown -R ${DEPLOY_USER}:${DEPLOY_USER} \${DEPLOY_PATH}
+                        
+                        # Backup del deploy actual
+                        if [ -d "\${DEPLOY_PATH}/current" ]; then
+                            TIMESTAMP=\$(date +%Y%m%d_%H%M%S)
+                            sudo cp -r "\${DEPLOY_PATH}/current" "\${BACKUP_DIR}/\${TIMESTAMP}"
+                            echo "✅ Backup creado: \${BACKUP_DIR}/\${TIMESTAMP}"
+                        fi
+                        
+                        # Copiar nuevo build
+                        echo "📦 Copiando nueva versión..."
+                        sudo rm -rf "\${DEPLOY_PATH}/new_build"
+                        sudo cp -r build "\${DEPLOY_PATH}/new_build"
+                        
+                        # Cambiar ownership
+                        sudo chown -R www-data:www-data "\${DEPLOY_PATH}/new_build"
+                        sudo chmod -R 755 "\${DEPLOY_PATH}/new_build"
+                        
+                        # Switch al nuevo build (atomic deploy)
+                        echo "🔄 Realizando deploy atómico..."
+                        sudo rm -rf "\${DEPLOY_PATH}/old_build"
+                        if [ -d "\${DEPLOY_PATH}/current" ]; then
+                            sudo mv "\${DEPLOY_PATH}/current" "\${DEPLOY_PATH}/old_build"
+                        fi
+                        sudo mv "\${DEPLOY_PATH}/new_build" "\${DEPLOY_PATH}/current"
+                        sudo rm -rf "\${DEPLOY_PATH}/old_build"
+                        
+                        # Configurar Nginx si es necesario
+                        if [ ! -f "/etc/nginx/sites-enabled/\${APP_NAME}" ]; then
+                            echo "⚠️  Configuración de Nginx no encontrada, creando..."
+                            sudo bash -c 'cat > /etc/nginx/sites-available/\${APP_NAME} << NGINX_CONFIG
+                        server {
+                            listen 80;
+                            server_name ${DEPLOY_SERVER};
+                            root \${DEPLOY_PATH}/current;
+                            index index.html;
+                            
+                            location / {
+                                try_files \\$uri \\$uri/ /index.html;
+                            }
+                            
+                            # Cache estáticos
+                            location ~* \\.(js|css|png|jpg|jpeg|gif|ico|svg|woff2)$ {
+                                expires 1y;
+                                add_header Cache-Control "public, immutable";
+                            }
+                        }
+                        NGINX_CONFIG'
+                            
+                            sudo ln -sf /etc/nginx/sites-available/\${APP_NAME} /etc/nginx/sites-enabled/
+                            sudo nginx -t && sudo systemctl reload nginx
+                        fi
+                        
+                        echo "✅ Despliegue completado exitosamente!"
+                        EOF
+                        
+                        chmod +x deploy.sh
+                    """
+                }
+            }
+        }
+        
+        // Stage 9: Desplegar en MV
+        stage('Deploy to VM') {
+            when {
+                expression { 
+                    return env.BRANCH_NAME == 'main' || env.BRANCH_NAME == 'develop' 
+                }
+            }
+            
+            steps {
+                script {
+                    def environment = env.BRANCH_NAME == 'main' ? 'production' : 'staging'
+                    def port = env.BRANCH_NAME == 'main' ? '80' : '8080'
+                    
+                    echo "🚀 Desplegando en ${environment} (${DEPLOY_SERVER}:${port})"
+                    
+                    sshagent([SSH_CREDENTIALS]) {
+                        // Crear directorio remoto si no existe
+                        sh """
+                            ssh -o StrictHostKeyChecking=no ${DEPLOY_USER}@${DEPLOY_SERVER} \
+                                "sudo mkdir -p ${DEPLOY_PATH} && sudo chown ${DEPLOY_USER} ${DEPLOY_PATH}"
+                        """
+                        
+                        // Copiar build y script de despliegue
+                        sh """
+                            scp -o StrictHostKeyChecking=no -r build/ ${DEPLOY_USER}@${DEPLOY_SERVER}:${DEPLOY_PATH}/temp_build/
+                            scp -o StrictHostKeyChecking=no deploy.sh ${DEPLOY_USER}@${DEPLOY_SERVER}:${DEPLOY_PATH}/
+                        """
+                        
+                        // Ejecutar script de despliegue
+                        sh """
+                            ssh -o StrictHostKeyChecking=no ${DEPLOY_USER}@${DEPLOY_SERVER} \
+                                "cd ${DEPLOY_PATH} && chmod +x deploy.sh && ./deploy.sh"
+                        """
+                    }
+                }
+            }
+        }
+        
+        // Stage 10: Smoke Tests
+        stage('Smoke Tests') {
+            when {
+                expression { 
+                    return env.BRANCH_NAME == 'main' || env.BRANCH_NAME == 'develop' 
+                }
+            }
+            
+            steps {
+                script {
+                    def protocol = env.BRANCH_NAME == 'main' ? 'https' : 'http'
+                    def url = "${protocol}://${DEPLOY_SERVER}"
+                    
+                    echo "🧪 Ejecutando smoke tests en: ${url}"
+                    
+                    // Tests de humo básicos
+                    sh """
+                        # Esperar que el deploy esté completo
+                        sleep 10
+                        
+                        # Verificar que la aplicación carga
+                        if curl -f ${url} > /dev/null 2>&1; then
+                            echo "✅ La aplicación responde correctamente"
+                        else
+                            echo "❌ La aplicación no responde"
+                            exit 1
+                        fi
+                        
+                        # Verificar que el bundle JS se carga
+                        if curl -f ${url}/static/js/main.*.js > /dev/null 2>&1; then
+                            echo "✅ Los archivos estáticos se sirven correctamente"
+                        else
+                            echo "❌ Error cargando archivos estáticos"
+                            exit 1
+                        fi
+                    """
+                }
+            }
+        }
+        
+        // Stage 11: Lighthouse Audit (solo production)
+        stage('Lighthouse Audit') {
+            when {
+                expression { 
+                    return env.BRANCH_NAME == 'main' 
+                }
+            }
+            
+            steps {
+                script {
+                    try {
+                        sh 'npm install -g lighthouse'
+                        sh """
+                            lighthouse http://${DEPLOY_SERVER} \
+                                --output html --output-path ./lighthouse-report.html \
+                                --chrome-flags="--headless --no-sandbox" \
+                                --only-categories=performance,accessibility,best-practices,seo
+                        """
+                        
+                        publishHTML(
+                            target: [
+                                allowMissing: true,
+                                alwaysLinkToLastBuild: false,
+                                keepAll: true,
+                                reportDir: '.',
+                                reportFiles: 'lighthouse-report.html',
+                                reportName: 'Lighthouse Report'
+                            ]
+                        )
+                    } catch (Exception e) {
+                        echo "⚠️ Lighthouse audit skipped: ${e.message}"
+                    }
+                }
+            }
+        }
+    }
+    
+    post {
+        always {
+            // Limpieza
+            cleanWs()
+            
+            // Notificación
+            script {
+                def message = "React Build ${currentBuild.result ?: 'SUCCESS'} - ${env.JOB_NAME} #${env.BUILD_NUMBER}"
+                
+                // Slack notification
+                slackSend(
+                    channel: '#frontend-builds',
+                    message: message,
+                    color: currentBuild.result == 'SUCCESS' ? 'good' : 'danger'
+                )
+                
+                // Email notification para failures
+                if (currentBuild.result == 'FAILURE') {
+                    emailext (
+                        subject: "❌ Build Failed - ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+                        body: """
+                            Proyecto: ${env.JOB_NAME}
+                            Build: #${env.BUILD_NUMBER}
+                            Estado: FAILED
+                            Rama: ${env.BRANCH_NAME}
+                            Commit: ${env.GIT_COMMIT.take(8)}
+                            URL: ${env.BUILD_URL}
+                        """,
+                        to: "frontend-team@example.com",
+                        attachLog: true
+                    )
+                }
+            }
+        }
+        
+        success {
+            echo "🎉 Pipeline de React ejecutada exitosamente!"
+            script {
+                if (env.BRANCH_NAME == 'main') {
+                    slackSend(
+                        channel: '#deployments',
+                        message: "✅ React App desplegada en producción: http://${DEPLOY_SERVER}",
+                        color: 'good'
+                    )
+                }
+            }
+        }
+        
+        failure {
+            echo "💥 Pipeline falló - Revisar logs"
+        }
+        
+        unstable {
+            echo "⚠️  Build inestable - Problemas de calidad de código"
+        }
+    }
+}

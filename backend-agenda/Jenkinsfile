@@ -1,0 +1,357 @@
+pipeline {
+    agent any
+    
+    environment {
+        // Variables de entorno
+        JAVA_HOME = "${tool 'JDK17'}"
+        APP_NAME = "backend-agenda"
+        VERSION = "${env.BRANCH_NAME == 'main' ? env.BUILD_NUMBER : "${env.BRANCH_NAME}-${env.BUILD_NUMBER}"}"
+        
+        // Configuración de la MV
+        DEPLOY_SERVER = "74.163.99.83"
+        DEPLOY_USER = "azureuser"
+        DEPLOY_PATH = "/opt/apps/${APP_NAME}"
+        SSH_CREDENTIALS = "vm-ssh-key"
+    }
+    
+    options {
+        buildDiscarder(logRotator(numToKeepStr: '10'))
+        timeout(time: 30, unit: 'MINUTES')
+        disableConcurrentBuilds()        
+    }
+    
+    tools {
+        jdk 'JDK17'
+        maven 'Maven3'
+    }
+    
+    stages {
+        // Stage 1: Checkout del código
+        stage('Checkout') {
+            steps {
+                checkout scm
+                script {
+                    currentBuild.displayName = "#${env.BUILD_NUMBER} - ${env.GIT_BRANCH}"
+                    currentBuild.description = "Commit: ${env.GIT_COMMIT.take(8)}"
+                }
+            }
+        }
+        
+        // Stage 2: Cache de dependencias Maven (alternativa)
+        stage('Cache Dependencies') {
+            steps {
+                script {
+                    // Solución alternativa sin plugin cache
+                    echo '📦 Gestionando dependencias Maven...'
+                    try {
+                        // Intenta usar dependencias existentes
+                        sh 'mvn dependency:resolve -q'
+                        echo '✅ Dependencias verificadas correctamente'
+                    } catch (Exception e) {
+                        echo '⚠️  Descargando dependencias...'
+                        sh 'mvn dependency:go-offline -q'
+                    }
+                }
+            }
+        }
+
+        // Stage 3: Compilación y empaquetado
+        stage('Build') {
+            steps {
+                sh 'mvn clean compile -q'
+                sh 'mvn package -DskipTests -q'
+                
+                // Guardar el JAR como artefacto
+                archiveArtifacts artifacts: 'target/*.jar', fingerprint: true
+            }
+            
+            post {
+                success {
+                    echo "✅ Build exitoso - JAR generado"
+                }
+                failure {
+                    echo "❌ Fallo en la compilación"
+                }
+            }
+        }
+        
+        // Stage 4: Análisis estático de código
+        stage('Static Analysis') {
+            steps {
+                sh 'mvn checkstyle:checkstyle pmd:pmd spotbugs:spotbugs -q'
+                
+                // Publicar reportes
+                recordIssues(
+                    tools: [
+                        checkStyle(pattern: '**/checkstyle-result.xml'),
+                        pmdParser(pattern: '**/pmd.xml'),
+                        spotBugs(pattern: '**/spotbugs.xml')
+                    ],
+                    qualityGates: [
+                        [threshold: 1, type: 'TOTAL', unstable: true]
+                    ]
+                )
+            }
+        }
+        
+        // Stage 5: Testing
+        stage('Test') {
+            parallel {
+                stage('Unit Tests') {
+                    steps {
+                        sh 'mvn test -q'
+                        
+                        // Reporte de cobertura
+                        jacoco(
+                            execPattern: 'target/jacoco.exec',
+                            classPattern: 'target/classes',
+                            sourcePattern: 'src/main/java',
+                            exclusionPattern: 'src/test*'
+                        )
+                    }
+                    
+                    post {
+                        always {
+                            junit 'target/surefire-reports/*.xml'
+                        }
+                    }
+                }
+                
+                stage('Integration Tests') {
+                    steps {
+                        sh 'mvn verify -DskipUnitTests -q'
+                        junit 'target/failsafe-reports/*.xml'
+                    }
+                }
+            }
+            
+            post {
+                always {
+                    // Publicar reportes de tests
+                    publishHTML(
+                        target: [
+                            allowMissing: false,
+                            alwaysLinkToLastBuild: false,
+                            keepAll: true,
+                            reportDir: 'target/site/jacoco',
+                            reportFiles: 'index.html',
+                            reportName: 'Code Coverage Report'
+                        ]
+                    )
+                }
+            }
+        }
+        
+        // Stage 6: Análisis de seguridad
+        stage('Security Scan') {
+            steps {
+                script {
+                    // Escaneo de dependencias
+                    sh 'mvn org.owasp:dependency-check-maven:check -q'
+                }
+            }
+        }
+        
+        // Stage 7: Preparar despliegue
+        stage('Prepare Deployment') {
+            when {
+                expression { 
+                    return env.BRANCH_NAME == 'main' || env.BRANCH_NAME == 'develop' 
+                }
+            }
+            
+            steps {
+                script {
+                    // Crear estructura de despliegue
+                    sh """
+                        mkdir -p deployment
+                        cp target/*.jar deployment/
+                        cp src/main/resources/application.properties deployment/
+                        
+                        # Crear script de despliegue
+                        cat > deployment/deploy.sh << 'EOF'
+                        #!/bin/bash
+                        APP_NAME="${APP_NAME}"
+                        DEPLOY_PATH="${DEPLOY_PATH}"
+                        JAR_FILE="target/*.jar"
+                        
+                        echo "🔧 Deteniendo aplicación anterior..."
+                        sudo systemctl stop \${APP_NAME} || true
+                        
+                        echo "📦 Copiando nuevos archivos..."
+                        sudo cp \${JAR_FILE} \${DEPLOY_PATH}/app.jar
+                        sudo cp application.properties \${DEPLOY_PATH}/
+                        
+                        echo "🔧 Aplicando configuraciones..."
+                        sudo chown -R ${DEPLOY_USER}:${DEPLOY_USER} \${DEPLOY_PATH}
+                        sudo chmod 755 \${DEPLOY_PATH}/app.jar
+                        
+                        echo "🚀 Iniciando aplicación..."
+                        sudo systemctl start \${APP_NAME}
+                        
+                        echo "✅ Despliegue completado!"
+                        EOF
+                        
+                        chmod +x deployment/deploy.sh
+                    """
+                    
+                    archiveArtifacts artifacts: 'deployment/**/*', fingerprint: true
+                }
+            }
+        }
+
+        // Stage 9: Desplegar en MV
+        stage('Deploy to VM') {
+            when {
+                expression { 
+                    return env.BRANCH_NAME == 'main' || env.BRANCH_NAME == 'develop' 
+                }
+            }
+            
+            steps {
+                script {
+                    def environment = env.BRANCH_NAME == 'main' ? 'production' : 'staging'
+                    
+                    echo "🚀 Desplegando en ${environment} (${DEPLOY_SERVER})"
+                    
+                    // Transferir archivos a la MV
+                    sshagent([SSH_CREDENTIALS]) {
+                        // Crear directorio remoto si no existe
+                        sh """                            
+                            ssh -o StrictHostKeyChecking=no ${DEPLOY_USER}@${DEPLOY_SERVER} \\
+                                "sudo mkdir -p ${DEPLOY_PATH} && sudo chown ${DEPLOY_USER} ${DEPLOY_PATH}"                                                        
+                        """
+                        // Copiar archivos
+                        sh """                            
+                            scp -o StrictHostKeyChecking=no deployment/* ${DEPLOY_USER}@${DEPLOY_SERVER}:${DEPLOY_PATH}/                            
+                        """
+                        // Ejecutar script de despliegue - CORRECCIÓN AQUÍ
+                        sh """                                                        
+                            ssh -o StrictHostKeyChecking=no ${DEPLOY_USER}@${DEPLOY_SERVER} \\
+                                'cd ${DEPLOY_PATH} && \\
+                                chmod +x deploy.sh && ./deploy.sh'
+                        """                                                
+                    }
+                }
+            }
+        }        
+        
+        // Stage 9: Smoke Tests
+        stage('Smoke Tests') {
+            when {
+                expression { 
+                    return env.BRANCH_NAME == 'main' || env.BRANCH_NAME == 'develop' 
+                }
+            }
+            
+            steps {
+                script {
+                    def port = env.BRANCH_NAME == 'main' ? '8080' : '8081'
+                    def url = "http://${DEPLOY_SERVER}:${port}"
+                    
+                    echo "🧪 Ejecutando smoke tests en: ${url}"
+                    
+                    // Tests de humo básicos
+                    sh """
+                        # Esperar que la aplicación esté lista
+                        sleep 30
+                        
+                        # Verificar health check
+                        curl -f ${url}/actuator/health || exit 1
+                        
+                        # Verificar que la aplicación responde
+                        curl -f ${url}/api/v1/status || exit 1
+                    """
+                }
+            }
+        }
+
+        // Stage 10: Backup (solo production)
+        stage('Backup') {
+            when {
+                expression { 
+                    return env.BRANCH_NAME == 'main' 
+                }
+            }
+            
+            steps {
+                script {
+                    echo "💾 Creando backup de la versión anterior..."
+
+                    sshagent([SSH_CREDENTIALS]) {
+                        sh """
+                            ssh -o StrictHostKeyChecking=no ${DEPLOY_USER}@${DEPLOY_SERVER} \\                            
+                            "cd ${DEPLOY_PATH} && \\
+                            if [ -f app.jar ]; then
+                                cp app.jar app.jar.backup.\\$(date +%Y%m%d_%H%M%S)
+                                echo "Backup creado"
+                            fi"
+                        """
+                    }
+                }
+            }
+        } 
+        
+               
+    }
+    
+    post {
+        always {
+            // Limpieza
+            cleanWs()
+            
+            // Notificación
+            script {
+                def message = "Build ${currentBuild.result ?: 'SUCCESS'} - ${env.JOB_NAME} #${env.BUILD_NUMBER}"
+                emailext (
+                    subject: "Build ${currentBuild.result} - ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+                    body: """
+                        Proyecto: ${env.JOB_NAME}
+                        Build: #${env.BUILD_NUMBER}
+                        Estado: ${currentBuild.result}
+                        Rama: ${env.BRANCH_NAME}
+                        Commit: ${env.GIT_COMMIT.take(8)}
+                        URL: ${env.BUILD_URL}
+                    """,
+                    to: "mmangeliguel@gmail.com",
+                    attachLog: currentBuild.result == 'FAILURE'
+                )
+            }
+        }
+        
+        success {
+            echo "🎉 Pipeline ejecutada exitosamente!"
+        } 
+
+        failure {
+            echo "💥 Pipeline falló - Revisar logs"            
+            // Rollback automático
+            script {
+                if (env.BRANCH_NAME == 'main') {
+                    echo "🔄 Intentando rollback..."
+                    sshagent([SSH_CREDENTIALS]) {
+                        sh """
+                            ssh -o StrictHostKeyChecking=no ${DEPLOY_USER}@${DEPLOY_SERVER} "
+                                cd ${DEPLOY_PATH} &&
+                                if ls app.jar.backup.* 1> /dev/null 2>&1; then
+                                    sudo systemctl stop ${APP_NAME} &&
+                                    LATEST_BACKUP=\\$(ls -t app.jar.backup.* | head -1) &&
+                                    cp \\$LATEST_BACKUP app.jar &&
+                                    sudo systemctl start ${APP_NAME} &&
+                                    echo 'Rollback exitoso'
+                                else
+                                    echo 'No hay backups disponibles'
+                                fi
+                            "
+                        """
+                    }
+                }
+            }
+        }          
+
+        
+        unstable {
+            echo "⚠️  Build inestable - Problemas de calidad"
+        }
+    }
+}

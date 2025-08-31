@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" href="%PUBLIC_URL%/favicon.ico" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#3498db" />
+    <meta
+      name="description"
+      content="Agenda Personal - Gestiona tus contactos de manera fácil y eficiente"
+    />
+    <meta name="keywords" content="agenda, contactos, gestión, personal, organizador" />
+    <meta name="author" content="Agenda Personal App" />
+    
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="%PUBLIC_URL%" />
+    <meta property="og:title" content="Agenda Personal" />
+    <meta property="og:description" content="Gestiona tus contactos de manera fácil y eficiente" />
+
+    <!-- Twitter -->
+    <meta property="twitter:card" content="summary_large_image" />
+    <meta property="twitter:url" content="%PUBLIC_URL%" />
+    <meta property="twitter:title" content="Agenda Personal" />
+    <meta property="twitter:description" content="Gestiona tus contactos de manera fácil y eficiente" />
+
+    <link rel="manifest" href="%PUBLIC_URL%/manifest.json" />
+    
+    <!-- Preconnect to external domains for performance -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <title>Agenda Personal - Gestiona tus Contactos</title>
+    
+    <style>
+      /* Loading styles */
+      .app-loading {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        height: 100vh;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        font-family: 'Inter', sans-serif;
+      }
+      
+      .loading-spinner {
+        width: 50px;
+        height: 50px;
+        border: 3px solid rgba(255,255,255,0.3);
+        border-top: 3px solid white;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+        margin-bottom: 1rem;
+      }
+      
+      @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+      }
+      
+      .loading-text {
+        font-size: 1.2rem;
+        font-weight: 500;
+        margin-bottom: 0.5rem;
+      }
+      
+      .loading-subtitle {
+        font-size: 0.9rem;
+        opacity: 0.8;
+      }
+    </style>
+  </head>
+  <body>
+    <noscript>
+      <div style="
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        height: 100vh;
+        background: #f8f9fa;
+        color: #2c3e50;
+        font-family: Arial, sans-serif;
+        text-align: center;
+        padding: 2rem;
+      ">
+        <div>
+          <h1>⚠️ JavaScript Requerido</h1>
+          <p>Esta aplicación requiere JavaScript para funcionar correctamente.</p>
+          <p>Por favor, habilita JavaScript en tu navegador y recarga la página.</p>
+        </div>
+      </div>
+    </noscript>
+    
+    <div id="root">
+      <div class="app-loading">
+        <div class="loading-spinner"></div>
+        <div class="loading-text">Cargando Agenda Personal</div>
+        <div class="loading-subtitle">Preparando tu experiencia...</div>
+      </div>
+    </div>
+  </body>
+</html>

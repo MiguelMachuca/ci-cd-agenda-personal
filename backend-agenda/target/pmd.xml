@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<pmd xmlns="http://pmd.sourceforge.net/report/2.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://pmd.sourceforge.net/report/2.0.0 http://pmd.sourceforge.net/report_2_0_0.xsd" version="6.53.0" timestamp="2025-08-28T16:35:49.636">
+<file name="/home/mangelmy/Desarrollo/DDS-V1-E1/entornos_CI_CD/Proyecto Agenda/backend-agenda/src/main/java/com/ejemplo/agenda/AgendaApplication.java">
+<violation beginline="7" endline="11" begincolumn="32" endcolumn="1" rule="UseUtilityClass" ruleset="Design" package="com.ejemplo.agenda" class="AgendaApplication" externalInfoUrl="https://pmd.github.io/pmd-6.53.0/pmd_rules_java_design.html#useutilityclass" priority="3">
+All methods are static.  Consider using a utility class instead. Alternatively, you could add a private constructor or make the class abstract to silence this warning.
+</violation>
+</file>
+<file name="/home/mangelmy/Desarrollo/DDS-V1-E1/entornos_CI_CD/Proyecto Agenda/backend-agenda/src/main/java/com/ejemplo/agenda/controller/ContactoController.java">
+<violation beginline="27" endline="27" begincolumn="52" endcolumn="57" rule="FormalParameterNamingConventions" ruleset="Code Style" package="com.ejemplo.agenda.controller" class="ContactoController" method="obtenerTodosContactos" variable="tamaño" externalInfoUrl="https://pmd.github.io/pmd-6.53.0/pmd_rules_java_codestyle.html#formalparameternamingconventions" priority="1">
+The method parameter name 'tamaño' doesn't match '[a-z][a-zA-Z0-9]*'
+</violation>
+</file>
+<file name="/home/mangelmy/Desarrollo/DDS-V1-E1/entornos_CI_CD/Proyecto Agenda/backend-agenda/src/main/java/com/ejemplo/agenda/model/Categoria.java">
+<violation beginline="33" endline="33" begincolumn="12" endcolumn="25" rule="UncommentedEmptyConstructor" ruleset="Documentation" package="com.ejemplo.agenda.model" class="Categoria" method="Categoria" externalInfoUrl="https://pmd.github.io/pmd-6.53.0/pmd_rules_java_documentation.html#uncommentedemptyconstructor" priority="3">
+Document empty constructor
+</violation>
+<violation beginline="114" endline="114" begincolumn="24" endcolumn="35" rule="ControlStatementBraces" ruleset="Code Style" package="com.ejemplo.agenda.model" class="Categoria" method="equals" externalInfoUrl="https://pmd.github.io/pmd-6.53.0/pmd_rules_java_codestyle.html#controlstatementbraces" priority="3">
+This statement should have braces
+</violation>
+<violation beginline="115" endline="115" begincolumn="54" endcolumn="66" rule="ControlStatementBraces" ruleset="Code Style" package="com.ejemplo.agenda.model" class="Categoria" method="equals" externalInfoUrl="https://pmd.github.io/pmd-6.53.0/pmd_rules_java_codestyle.html#controlstatementbraces" priority="3">
+This statement should have braces
+</violation>
+</file>
+<file name="/home/mangelmy/Desarrollo/DDS-V1-E1/entornos_CI_CD/Proyecto Agenda/backend-agenda/src/main/java/com/ejemplo/agenda/model/Contacto.java">
+<violation beginline="10" endline="10" begincolumn="1" endcolumn="27" rule="UnnecessaryImport" ruleset="Code Style" package="com.ejemplo.agenda.model" class="Contacto" externalInfoUrl="https://pmd.github.io/pmd-6.53.0/pmd_rules_java_codestyle.html#unnecessaryimport" priority="4">
+Unused import 'java.util.ArrayList'
+</violation>
+<violation beginline="11" endline="11" begincolumn="1" endcolumn="22" rule="UnnecessaryImport" ruleset="Code Style" package="com.ejemplo.agenda.model" class="Contacto" externalInfoUrl="https://pmd.github.io/pmd-6.53.0/pmd_rules_java_codestyle.html#unnecessaryimport" priority="4">
+Unused import 'java.util.List'
+</violation>
+</file>
+<file name="/home/mangelmy/Desarrollo/DDS-V1-E1/entornos_CI_CD/Proyecto Agenda/backend-agenda/src/main/java/com/ejemplo/agenda/model/dto/ContactoRequest.java">
+<violation beginline="37" endline="37" begincolumn="12" endcolumn="31" rule="UncommentedEmptyConstructor" ruleset="Documentation" package="com.ejemplo.agenda.model.dto" class="ContactoRequest" method="ContactoRequest" externalInfoUrl="https://pmd.github.io/pmd-6.53.0/pmd_rules_java_documentation.html#uncommentedemptyconstructor" priority="3">
+Document empty constructor
+</violation>
+</file>
+<file name="/home/mangelmy/Desarrollo/DDS-V1-E1/entornos_CI_CD/Proyecto Agenda/backend-agenda/src/main/java/com/ejemplo/agenda/model/dto/ContactoResponse.java">
+<violation beginline="21" endline="21" begincolumn="12" endcolumn="32" rule="UncommentedEmptyConstructor" ruleset="Documentation" package="com.ejemplo.agenda.model.dto" class="ContactoResponse" method="ContactoResponse" externalInfoUrl="https://pmd.github.io/pmd-6.53.0/pmd_rules_java_documentation.html#uncommentedemptyconstructor" priority="3">
+Document empty constructor
+</violation>
+</file>
+<file name="/home/mangelmy/Desarrollo/DDS-V1-E1/entornos_CI_CD/Proyecto Agenda/backend-agenda/src/main/java/com/ejemplo/agenda/repository/ContactoRepository.java">
+<violation beginline="15" endline="15" begincolumn="5" endcolumn="46" rule="MissingOverride" ruleset="Best Practices" package="com.ejemplo.agenda.repository" class="ContactoRepository" method="findAll" externalInfoUrl="https://pmd.github.io/pmd-6.53.0/pmd_rules_java_bestpractices.html#missingoverride" priority="3">
+The method 'findAll(Pageable)' is missing an @Override annotation.
+</violation>
+</file>
+<file name="/home/mangelmy/Desarrollo/DDS-V1-E1/entornos_CI_CD/Proyecto Agenda/backend-agenda/src/main/java/com/ejemplo/agenda/service/ContactoService.java">
+<violation beginline="3" endline="3" begincolumn="1" endcolumn="41" rule="UnnecessaryImport" ruleset="Code Style" package="com.ejemplo.agenda.service" class="ContactoService" externalInfoUrl="https://pmd.github.io/pmd-6.53.0/pmd_rules_java_codestyle.html#unnecessaryimport" priority="4">
+Unused import 'com.ejemplo.agenda.model.Contacto'
+</violation>
+<violation beginline="11" endline="11" begincolumn="66" endcolumn="71" rule="FormalParameterNamingConventions" ruleset="Code Style" package="com.ejemplo.agenda.service" class="ContactoService" method="obtenerTodosContactos" variable="tamaño" externalInfoUrl="https://pmd.github.io/pmd-6.53.0/pmd_rules_java_codestyle.html#formalparameternamingconventions" priority="1">
+The method parameter name 'tamaño' doesn't match '[a-z][a-zA-Z0-9]*'
+</violation>
+</file>
+<file name="/home/mangelmy/Desarrollo/DDS-V1-E1/entornos_CI_CD/Proyecto Agenda/backend-agenda/src/main/java/com/ejemplo/agenda/service/impl/ContactoServiceImpl.java">
+<violation beginline="32" endline="32" begincolumn="73" endcolumn="78" rule="FormalParameterNamingConventions" ruleset="Code Style" package="com.ejemplo.agenda.service.impl" class="ContactoServiceImpl" method="obtenerTodosContactos" variable="tamaño" externalInfoUrl="https://pmd.github.io/pmd-6.53.0/pmd_rules_java_codestyle.html#formalparameternamingconventions" priority="1">
+The method parameter name 'tamaño' doesn't match '[a-z][a-zA-Z0-9]*'
+</violation>
+</file>
+</pmd>

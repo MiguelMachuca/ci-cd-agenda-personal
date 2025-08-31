@@ -1,0 +1,660 @@
+name: $(Build.SourceBranchName)-$(Date:yyyyMMdd)$(Rev:.r)
+
+trigger:
+  branches:
+    include:
+      - main
+      - develop
+
+pr: none
+
+variables:
+  # Variables de aplicación
+  - group: VARIABLES  # Variable group primero
+  - name: APP_NAME    # Luego variables individuales
+    value: 'backend-agenda'
+  - name: DEPLOY_SERVER
+    value: '74.163.99.83'
+  - name: DEPLOY_USER
+    value: 'azureuser'
+  - name: DEPLOY_PATH
+    value: '/opt/apps/$(APP_NAME)'
+
+  # Variables de Maven  
+  - name: MAVEN_CACHE_FOLDER
+    value: $(Pipeline.Workspace)/.m2/repository
+  - name: MAVEN_OPTS
+    value: '-Dmaven.repo.local=$(MAVEN_CACHE_FOLDER)'
+  
+  # Variable de puerto 
+  - name: APP_PORT
+    value: '8080'  # Valor por defecto
+
+
+stages:
+  # Stage 1: Checkout y setup
+  - stage: Checkout
+    displayName: '1. Checkout del código'
+    jobs:
+      - job: Checkout
+        displayName: 'Checkout del repositorio'
+        pool:
+          vmImage: 'ubuntu-latest'
+        steps:
+          - checkout: self
+            fetchDepth: 1
+            clean: true
+          
+          - task: Bash@3
+            inputs:
+              targetType: 'inline'
+              script: |
+                echo "##vso[build.updatebuildnumber]$(Build.BuildNumber) - $(Build.SourceBranchName)"
+                
+                # Configurar APP_PORT basado en la branch
+                if [ "$(Build.SourceBranchName)" = "main" ]; then
+                  echo "##vso[task.setvariable variable=APP_PORT]8080"
+                  echo "Puerto configurado para main: 8080"
+                elif [ "$(Build.SourceBranchName)" = "develop" ]; then
+                  echo "##vso[task.setvariable variable=APP_PORT]8081"
+                  echo "Puerto configurado para develop: 8081"
+                else
+                  echo "##vso[task.setvariable variable=APP_PORT]8082"
+                  echo "Puerto configurado por defecto: 8082"
+                fi
+
+                # Obtener los primeros 8 caracteres del commit usando Bash nativo
+                SHORT_COMMIT=$(echo "$(Build.SourceVersion)" | cut -c1-8)
+                echo "Commit: $SHORT_COMMIT"
+                echo "##vso[build.updatebuildnumber]$(Build.BuildNumber) - $(Build.SourceBranchName) - $SHORT_COMMIT"
+            displayName: 'Establecer información de build'            
+
+  # Stage 2: Cache de dependencias
+  - stage: CacheDependencies
+    displayName: '2. Cache de dependencias'
+    dependsOn: Checkout
+    jobs:
+      - job: CacheMaven
+        displayName: 'Cache Maven'
+        pool:
+          vmImage: 'ubuntu-latest'
+        steps:
+          - task: Cache@2
+            inputs:
+              key: 'maven | "$(Agent.OS)" | pom.xml'
+              restoreKeys: |
+                maven | "$(Agent.OS)"
+                maven
+              path: $(MAVEN_CACHE_FOLDER)
+            displayName: 'Cache Maven dependencies'
+          
+          - script: |
+              mvn dependency:resolve -q
+              echo '✅ Dependencias verificadas correctamente'
+            displayName: 'Verificar dependencias Maven'
+
+  # Stage 3: Compilación y empaquetado
+  - stage: Build
+    displayName: '3. Compilación y empaquetado'
+    dependsOn: CacheDependencies
+    jobs:
+      - job: BuildPackage
+        displayName: 'Build y Package'
+        pool:
+          vmImage: 'ubuntu-latest'
+        steps:
+          - task: Maven@4
+            inputs:
+              mavenPomFile: 'pom.xml'
+              goals: 'clean compile'
+              options: '-q'
+              mavenOptions: '$(MAVEN_OPTS)'
+              jdkVersionOption: '1.17'
+              jdkArchitectureOption: 'x64'
+            displayName: 'Compilar proyecto'
+          
+          - task: Maven@4
+            inputs:
+              mavenPomFile: 'pom.xml'
+              goals: 'package'
+              options: '-DskipTests -q'
+              mavenOptions: '$(MAVEN_OPTS)'
+              jdkVersionOption: '1.17'
+              jdkArchitectureOption: 'x64'
+            displayName: 'Empaquetar JAR'
+          
+          - task: CopyFiles@2
+            inputs:
+              Contents: 'target/*.jar'
+              TargetFolder: '$(Build.ArtifactStagingDirectory)'
+              CleanTargetFolder: true
+            displayName: 'Copiar artefactos'
+          
+          - task: PublishBuildArtifacts@1
+            inputs:
+              PathtoPublish: '$(Build.ArtifactStagingDirectory)'
+              ArtifactName: 'app-artifacts'
+              publishLocation: 'Container'
+            displayName: 'Publicar artefactos'
+
+  # Stage 4: Testing
+  - stage: Test
+    displayName: '4. Testing'
+    dependsOn: Build
+    jobs:
+      - job: UnitTests
+        displayName: 'Tests unitarios'
+        pool:
+          vmImage: 'ubuntu-latest'
+        steps:
+          - task: Maven@4
+            inputs:
+              mavenPomFile: 'pom.xml'
+              goals: 'test'
+              options: '-q'
+              mavenOptions: '$(MAVEN_OPTS)'
+              jdkVersionOption: '1.17'
+              jdkArchitectureOption: 'x64'
+            displayName: 'Ejecutar tests unitarios'
+          
+          - task: PublishTestResults@2
+            inputs:
+              testResultsFiles: '**/surefire-reports/TEST-*.xml'
+              testRunTitle: 'Unit Tests'
+            displayName: 'Publicar resultados unitarios'
+          
+          - task: Maven@4
+            inputs:
+              mavenPomFile: 'pom.xml'
+              goals: 'jacoco:report'
+              options: '-q'
+              mavenOptions: '$(MAVEN_OPTS)'
+            displayName: 'Generar reporte JaCoCo'
+          
+          - task: PublishCodeCoverageResults@1
+            inputs:
+              codeCoverageTool: 'JaCoCo'
+              summaryFileLocation: '**/site/jacoco/jacoco.xml'
+              reportDirectory: '**/site/jacoco'
+            displayName: 'Publicar cobertura'
+
+  # Stage 5: Escaneo con Trivy
+  - stage: SecurityScan
+    displayName: '5. Escaneo de seguridad - Trivy'
+    dependsOn: Build
+    jobs:
+      - job: TrivySecurity
+        displayName: 'Análisis Trivy'
+        pool:
+          vmImage: 'ubuntu-latest'
+        steps:
+          - script: |
+              # Instalar Trivy
+              curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
+              trivy --version
+              
+              # Escanear dependencias Maven
+              trivy fs . --scanners vuln,secret,config --exit-code 0 --format table
+              
+              # Escanear JAR generado
+              trivy image --input target/*.jar --scanners vuln --exit-code 0 --format table
+              
+              # Generar reporte JSON
+              trivy fs . --format json --output trivy-results.json
+            displayName: 'Escaneo con Trivy'
+          
+          - task: PublishBuildArtifacts@1
+            inputs:
+              PathtoPublish: 'trivy-results.json'
+              ArtifactName: 'trivy-security-report'
+            displayName: 'Publicar reporte Trivy'                     
+
+  # Stage 6: Preparar despliegue
+  - stage: PrepareDeployment
+    displayName: '6. Preparar despliegue'
+    dependsOn: 
+      - Test
+      - SecurityScan
+    condition: and(succeeded(), or(eq(variables['Build.SourceBranch'], 'refs/heads/main'), eq(variables['Build.SourceBranch'], 'refs/heads/develop')))
+    jobs:
+      - job: PrepareDeploy
+        displayName: 'Preparar archivos de despliegue'
+        pool:
+          vmImage: 'ubuntu-latest'
+        steps:
+          - download: current
+            artifact: app-artifacts
+            displayName: 'Descargar artefactos'
+          
+          - script: |
+              mkdir -p deployment
+              cp $(Pipeline.Workspace)/app-artifacts/target/*.jar deployment/
+              
+              # Buscar archivos de configuración
+              if [ -f "src/main/resources/application.properties" ]; then
+                cp src/main/resources/application.properties deployment/
+                echo "✅ application.properties copiado"
+              fi
+              
+              if [ -f "src/main/resources/application.yml" ]; then
+                cp src/main/resources/application.yml deployment/
+                echo "✅ application.yml copiado"
+              fi
+              
+              if [ -f "src/main/resources/application-$(Build.SourceBranchName).properties" ]; then
+                cp src/main/resources/application-$(Build.SourceBranchName).properties deployment/
+                echo "✅ application-$(Build.SourceBranchName).properties copiado"
+              fi
+              
+              # Crear script de despliegue
+              cat > deployment/deploy.sh << EOF
+              #!/bin/bash
+              APP_NAME="$(APP_NAME)"
+              DEPLOY_PATH="$(DEPLOY_PATH)"
+              APP_PORT="$(APP_PORT)"
+              CURRENT_DIR=\$(pwd)
+              
+              echo "🔧 Deteniendo aplicación anterior..."
+              sudo systemctl stop \${APP_NAME} || true
+              
+              echo "📦 Copiando nuevos archivos..."
+              # Verificar si estamos en el directorio de destino para evitar copiar sobre sí mismo
+              if [ "\$CURRENT_DIR" != "\$DEPLOY_PATH" ]; then
+                sudo cp *.jar \${DEPLOY_PATH}/app.jar
+                
+                # Copiar archivos de configuración
+                if [ -f "application.properties" ]; then
+                  sudo cp application.properties \${DEPLOY_PATH}/
+                fi
+                
+                if [ -f "application.yml" ]; then
+                  sudo cp application.yml \${DEPLOY_PATH}/
+                fi
+                
+                if [ -f "application-$(Build.SourceBranchName).properties" ]; then
+                  sudo cp application-$(Build.SourceBranchName).properties \${DEPLOY_PATH}/application.properties
+                fi
+              else
+                echo "ℹ️  Los archivos ya están en el directorio destino, omitiendo copia"
+                # Solo asegurar que el JAR tenga el nombre correcto
+                if [ -f "*.jar" ] && [ ! -f "app.jar" ]; then
+                  JAR_FILE=\$(ls *.jar | head -1)
+                  sudo mv "\$JAR_FILE" app.jar
+                  echo "✅ JAR renombrado a app.jar"
+                fi
+              fi
+              
+              # Crear archivo de servicio systemd si no existe
+              if [ ! -f "/etc/systemd/system/\${APP_NAME}.service" ]; then
+                echo "📋 Creando servicio systemd..."
+                sudo tee /etc/systemd/system/\${APP_NAME}.service > /dev/null << EOL
+              [Unit]
+              Description=Backend Agenda Service
+              After=network.target
+              
+              [Service]
+              User=$(DEPLOY_USER)
+              Group=$(DEPLOY_USER)
+              WorkingDirectory=\${DEPLOY_PATH}
+              ExecStart=/usr/bin/java -jar app.jar --server.port=\${APP_PORT}
+              Restart=always
+              RestartSec=5
+              
+              [Install]
+              WantedBy=multi-user.target
+              EOL
+                
+                sudo systemctl daemon-reload
+                sudo systemctl enable \${APP_NAME}
+              fi
+              
+              echo "🔧 Aplicando configuraciones..."
+              sudo chown -R $(DEPLOY_USER):$(DEPLOY_USER) \${DEPLOY_PATH}
+              sudo chmod 755 \${DEPLOY_PATH}/app.jar
+              
+              echo "🚀 Iniciando aplicación..."
+              sudo systemctl start \${APP_NAME}
+              
+              echo "✅ Despliegue completado!"
+              echo "🌐 URL: http://$(DEPLOY_SERVER):\${APP_PORT}"
+              EOF
+              
+              chmod +x deployment/deploy.sh
+              
+              # Crear script de rollback
+              cat > deployment/rollback.sh << EOF
+              #!/bin/bash
+              APP_NAME="$(APP_NAME)"
+              DEPLOY_PATH="$(DEPLOY_PATH)"
+              
+              echo "🔄 Iniciando rollback..."
+              
+              # Buscar el backup más reciente
+              LATEST_BACKUP=\$(ls -t \${DEPLOY_PATH}/app.jar.backup.* 2>/dev/null | head -1)
+              
+              if [ -n "\$LATEST_BACKUP" ]; then
+                echo "📦 Restaurando backup: \$LATEST_BACKUP"
+                sudo systemctl stop \${APP_NAME} || true
+                sudo cp \$LATEST_BACKUP \${DEPLOY_PATH}/app.jar
+                sudo systemctl start \${APP_NAME}
+                echo "✅ Rollback completado!"
+              else
+                echo "❌ No se encontraron backups para rollback"
+                exit 1
+              fi
+              EOF
+              
+              chmod +x deployment/rollback.sh
+              
+              echo "✅ Archivos de despliegue preparados"
+            displayName: 'Preparar archivos de despliegue'
+          
+          - task: PublishBuildArtifacts@1
+            inputs:
+              PathtoPublish: 'deployment'
+              ArtifactName: 'deployment-package'
+              publishLocation: 'Container'
+            displayName: 'Publicar paquete de despliegue'     
+                          
+  # Stage 7: Desplegar en VM
+  - stage: DeployToVM
+    displayName: '7. Desplegar en VM'
+    dependsOn: PrepareDeployment
+    condition: and(succeeded(), or(eq(variables['Build.SourceBranch'], 'refs/heads/main'), eq(variables['Build.SourceBranch'], 'refs/heads/develop')))
+    jobs:
+      - job: DeployVM
+        displayName: 'Desplegar en máquina virtual'
+        pool:
+          vmImage: 'ubuntu-latest'
+        steps:
+          - download: current
+            artifact: deployment-package
+            displayName: 'Descargar paquete de despliegue'
+          
+          - script: |
+              echo "=== VERIFICACIÓN DETALLADA DE ARCHIVOS ==="
+              echo "Contenido de deployment-package:"
+              ls -la $(Pipeline.Workspace)/deployment-package/
+              echo "---"
+              echo "Archivos JAR:"
+              find $(Pipeline.Workspace)/deployment-package -name "*.jar" -type f
+              echo "---"
+              echo "Archivos .sh:"
+              find $(Pipeline.Workspace)/deployment-package -name "*.sh" -type f
+              echo "---"
+              echo "Archivos de configuración:"
+              find $(Pipeline.Workspace)/deployment-package -name "*.properties" -o -name "*.yml" -type f
+            displayName: 'Verificar archivos descargados en detalle'
+          
+          - task: SSH@0
+            displayName: 'Limpiar y preparar directorio remoto'
+            inputs:
+              sshEndpoint: 'vm-ssh-connection'
+              runOptions: 'inline'
+              inline: |
+                echo "🧹 Limpiando directorio de despliegue..."
+                sudo rm -rf $(DEPLOY_PATH)/*
+                sudo rm -rf $(DEPLOY_PATH)/.* 2>/dev/null || true
+                sudo mkdir -p $(DEPLOY_PATH)
+                sudo chown -R $(DEPLOY_USER):$(DEPLOY_USER) $(DEPLOY_PATH)
+                sudo chmod 755 $(DEPLOY_PATH)
+                echo "✅ Directorio limpio y preparado: $(DEPLOY_PATH)"
+              readyTimeout: '20000'
+          
+          - task: CopyFilesOverSSH@0
+            displayName: 'Copiar TODOS los archivos de despliegue'
+            inputs:
+              sshEndpoint: 'vm-ssh-connection'
+              sourceFolder: '$(Pipeline.Workspace)/deployment-package'
+              contents: '**'  # Copiar todo el contenido
+              targetFolder: '$(DEPLOY_PATH)'
+              cleanTargetFolder: false
+              overwrite: true
+              failOnEmptySource: true
+          
+          - task: SSH@0
+            displayName: 'Verificar archivos copiados'
+            inputs:
+              sshEndpoint: 'vm-ssh-connection'
+              runOptions: 'inline'
+              inline: |
+                echo "📋 Verificando archivos copiados:"
+                cd $(DEPLOY_PATH)
+                echo "Contenido del directorio:"
+                ls -la
+                echo "---"
+                echo "Archivos JAR encontrados:"
+                find . -name "*.jar" -type f
+                echo "---"
+                echo "Tamaño de archivos:"
+                du -sh *
+              readyTimeout: '20000'
+          
+          - task: SSH@0
+            displayName: 'Ajustar permisos de archivos'
+            inputs:
+              sshEndpoint: 'vm-ssh-connection'
+              runOptions: 'inline'
+              inline: |
+                echo "🔧 Ajustando permisos..."
+                cd $(DEPLOY_PATH)
+                sudo chown -R $(DEPLOY_USER):$(DEPLOY_USER) .
+                
+                # Ajustar permisos específicos
+                find . -name "*.jar" -exec sudo chmod 644 {} \;
+                find . -name "*.properties" -exec sudo chmod 644 {} \;
+                find . -name "*.yml" -exec sudo chmod 644 {} \;
+                find . -name "*.sh" -exec sudo chmod 755 {} \;
+                
+                echo "✅ Permisos ajustados correctamente"
+                echo "Archivos con permisos finales:"
+                ls -la
+              readyTimeout: '20000'
+          
+          - task: SSH@0
+            displayName: 'Renombrar JAR si es necesario'
+            inputs:
+              sshEndpoint: 'vm-ssh-connection'
+              runOptions: 'inline'
+              inline: |
+                echo "🔄 Buscando y renombrando archivo JAR..."
+                cd $(DEPLOY_PATH)
+                
+                # Buscar el archivo JAR
+                JAR_FILE=$(find . -name "*.jar" -type f | head -1)
+                
+                if [ -n "$JAR_FILE" ]; then
+                  echo "✅ Encontrado: $JAR_FILE"
+                  # Renombrar a app.jar si tiene otro nombre
+                  if [ "$JAR_FILE" != "./app.jar" ]; then
+                    echo "📦 Renombrando $JAR_FILE a app.jar"
+                    mv "$JAR_FILE" app.jar
+                    sudo chmod 644 app.jar
+                  fi
+                else
+                  echo "❌ ERROR: No se encontró ningún archivo JAR"
+                  echo "Archivos presentes:"
+                  ls -la
+                  exit 1
+                fi
+                
+                echo "✅ Archivo JAR listo:"
+                ls -la app.jar
+              readyTimeout: '20000'
+          
+          - task: SSH@0
+            displayName: 'Ejecutar despliegue'
+            inputs:
+              sshEndpoint: 'vm-ssh-connection'
+              runOptions: 'inline'
+              inline: |
+                echo "=== INICIANDO DESPLIEGUE ==="
+                echo "Directorio: $(DEPLOY_PATH)"
+                cd $(DEPLOY_PATH)
+                echo "Archivos finales:"
+                ls -la
+                
+                # Verificar que deploy.sh y app.jar existen
+                if [ ! -f "deploy.sh" ]; then
+                  echo "❌ ERROR: deploy.sh no encontrado"
+                  exit 1
+                fi
+                
+                if [ ! -f "app.jar" ]; then
+                  echo "❌ ERROR: app.jar no encontrado"
+                  exit 1
+                fi
+                
+                echo "✅ Todos los archivos necesarios encontrados"
+                echo "Ejecutando deploy.sh..."
+                ./deploy.sh
+              readyTimeout: '30000'
+          
+          - task: SSH@0
+            displayName: 'Verificar despliegue'
+            inputs:
+              sshEndpoint: 'vm-ssh-connection'
+              runOptions: 'inline'
+              inline: |
+                echo "=== VERIFICACIÓN DE DESPLIEGUE ==="
+                echo "Estado del servicio:"
+                sudo systemctl status $(APP_NAME) --no-pager -l || true
+                echo "---"
+                echo "Últimas líneas del journal:"
+                sudo journalctl -u $(APP_NAME) -n 20 --no-pager || true
+                echo "---"
+                echo "Puerto escuchando:"
+                sudo netstat -tlnp | grep :$(APP_PORT) || echo "Puerto $(APP_PORT) no encontrado"
+                echo "---"
+                echo "Proceso Java:"
+                ps aux | grep java | grep -v grep || echo "No se encontró proceso Java"
+              readyTimeout: '20000'
+
+  # Stage 8: Smoke Tests
+  - stage: SmokeTests
+    displayName: '8. Smoke Tests'
+    dependsOn: DeployToVM
+    condition: and(succeeded(), or(eq(variables['Build.SourceBranch'], 'refs/heads/main'), eq(variables['Build.SourceBranch'], 'refs/heads/develop')))
+    jobs:
+      - job: SmokeTest
+        displayName: 'Tests de humo'
+        pool:
+          vmImage: 'ubuntu-latest'
+        steps:
+          - script: |
+              echo "🧪 Ejecutando smoke tests en: http://$(DEPLOY_SERVER):$(APP_PORT)"
+              
+              # Esperar que la aplicación esté lista
+              echo "⏳ Esperando que la aplicación esté lista..."
+              sleep 30
+              
+              # Intentar health check con reintentos
+              for i in {1..5}; do
+                echo "Intento $i de 5: Verificando health check..."
+                if curl -f -s -o /dev/null -w "HTTP %{http_code}" --connect-timeout 10 http://$(DEPLOY_SERVER):$(APP_PORT)/actuator/health; then
+                  echo "✅ Health check exitoso"
+                  break
+                else
+                  echo "❌ Health check falló, reintentando en 10 segundos..."
+                  sleep 10
+                fi
+                
+                if [ $i -eq 5 ]; then
+                  echo "❌ Todos los intentos de health check fallaron"
+                  exit 1
+                fi
+              done
+              
+              # Verificar endpoint de status
+              if curl -f -s --connect-timeout 10 http://$(DEPLOY_SERVER):$(APP_PORT)/api/v1/status; then
+                echo "✅ Status endpoint funcionando"
+              else
+                echo "⚠️  Status endpoint no disponible, pero la aplicación está corriendo"
+              fi
+              
+              echo "✅ Smoke tests completados exitosamente"
+            displayName: 'Ejecutar smoke tests'
+
+  # Stage 9: Backup
+  - stage: Backup
+    displayName: '9. Backup'
+    dependsOn: DeployToVM
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+    jobs:
+      - job: CreateBackup
+        displayName: 'Crear backup'
+        pool:
+          vmImage: 'ubuntu-latest'
+        steps:
+          - task: SSH@0
+            displayName: 'Crear backup de la aplicación'
+            inputs:
+              sshEndpoint: 'vm-ssh-connection'
+              runOptions: 'inline'
+              inline: |
+                echo "💾 Creando backup de la versión anterior..."
+                
+                cd $(DEPLOY_PATH)
+                
+                # Verificar si existe el archivo JAR
+                if [ -f "app.jar" ]; then
+                  # Crear nombre de backup con timestamp
+                  BACKUP_FILE="app.jar.backup.$(date +%Y%m%d_%H%M%S)"
+                  echo "📦 Creando backup: $BACKUP_FILE"
+                  
+                  # Copiar el archivo actual como backup
+                  cp app.jar "$BACKUP_FILE"
+                  
+                  # Verificar que el backup se creó correctamente
+                  if [ -f "$BACKUP_FILE" ]; then
+                    echo "✅ Backup creado exitosamente: $BACKUP_FILE"
+                    echo "Tamaño del backup: $(du -h "$BACKUP_FILE" | cut -f1)"
+                  else
+                    echo "❌ Error: No se pudo crear el backup"
+                    exit 1
+                  fi
+                  
+                  # Listar todos los backups existentes
+                  echo "📋 Backups existentes en el directorio:"
+                  ls -la *.backup.* 2>/dev/null || echo "No hay backups previos"
+                  
+                  # Limitar a mantener solo los últimos 5 backups (opcional)
+                  echo "🧹 Limpiando backups antiguos (manteniendo últimos 5)..."
+                  BACKUP_COUNT=$(ls *.backup.* 2>/dev/null | wc -l)
+                  if [ $BACKUP_COUNT -gt 5 ]; then
+                    ls -t *.backup.* | tail -n +6 | while read old_backup; do
+                      echo "Eliminando backup antiguo: $old_backup"
+                      rm -f "$old_backup"
+                    done
+                    echo "✅ Backups antiguos eliminados"
+                  else
+                    echo "ℹ️  Hay $BACKUP_COUNT backups, no se necesita limpieza"
+                  fi
+                  
+                else
+                  echo "❌ Error: No se encontró app.jar en $(DEPLOY_PATH)"
+                  echo "Contenido del directorio:"
+                  ls -la
+                  exit 1
+                fi
+              readyTimeout: '20000'
+          
+          - task: SSH@0
+            displayName: 'Verificar espacio en disco después del backup'
+            inputs:
+              sshEndpoint: 'vm-ssh-connection'
+              runOptions: 'inline'
+              inline: |
+                echo "💽 Espacio en disco después del backup:"
+                df -h $(DEPLOY_PATH)
+                
+                echo "📊 Tamaño de los backups:"
+                cd $(DEPLOY_PATH)
+                du -sh *.backup.* 2>/dev/null || echo "No hay backups"
+                
+                echo "📦 Tamaño total del directorio:"
+                du -sh $(DEPLOY_PATH)
+              readyTimeout: '15000'
+
+# Post-execution cleanup and notifications
+# Azure DevOps maneja las notificaciones mediante la configuración del proyecto
